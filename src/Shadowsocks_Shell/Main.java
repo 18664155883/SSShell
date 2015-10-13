@@ -106,7 +106,7 @@ public class Main {
                         while(usersit.hasNext())
                         {
                         	String tempuser=usersit.next();
-                        	String back=exec("iptables -n -v -L -t filter |grep -i 'spt:"+usersinfo.get(tempuser).getPort()+"' -m 1|awk -F' ' '{print $2}'");
+                        	String back=exec("iptables -n -v -L -t filter -x |grep -i 'spt:"+usersinfo.get(tempuser).getPort()+"' -m 1|awk -F' ' '{print $2}'");
                     		String[] array=back.split("\n");
                     		if(array!=null)
                     		{
@@ -114,38 +114,13 @@ public class Main {
                     			{
                     				if(userbandwidth.containsKey(tempuser))
                     				{
-                    					long bandwidth = -1;
-                    					if(array[0].indexOf("M")!=-1)
-                        				{
-                        					//以M为单位，储存时统一！
-                        					bandwidth=Long.valueOf(array[0].substring(1, array[0].length()-1))*1024*1024;
-                        				}
-                        				else
-                        				{
-                        					if(array[0].indexOf("G")!=-1)
-                            				{
-                            					//以G为单位，储存时统一！
-                        						bandwidth=Long.valueOf(array[0].substring(1, array[0].length()-1))*1024*1024*1024;
-                            				}
-                        					else
-                        					{
-                        						if(array[0].indexOf("K")!=-1)
-                                				{
-                                					//以K为单位，储存时统一！
-                        							bandwidth=Long.valueOf(array[0].substring(1, array[0].length()-1))*1024;
-                                				}
-                        						else
-                        						{
-                        							//以B为单位，储存时统一！
-                        							bandwidth=Long.valueOf(array[0]);
-                        						}
-                        					}
-                        				}
+                    					//long bandwidth = -1;
+                    					long bandwidth=Long.valueOf(array[0]);
                     					
                     					System.out.println("bw:"+bandwidth+"|"+userbandwidth.get(tempuser));
-                    					if(bandwidth!=-1&&(bandwidth-userbandwidth.get(tempuser))>0)
+                    					if(bandwidth-userbandwidth.get(tempuser)>0)
                     					{
-                    						System.out.println("UPDATE `user` SET `u`=`u`+"+(bandwidth-userbandwidth.get(tempuser))+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `uid`='"+usersinfo.get(tempuser).getId()+"'");
+                    						System.out.println("EXC:UPDATE `user` SET `u`=`u`+"+(bandwidth-userbandwidth.get(tempuser))+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `uid`='"+usersinfo.get(tempuser).getId()+"'");
                     						Statement st1 = con.createStatement();
                     						st1.executeUpdate("UPDATE `user` SET `u`=`u`+"+(bandwidth-userbandwidth.get(tempuser))+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `uid`='"+usersinfo.get(tempuser).getId()+"'");
                     						userbandwidth.put(tempuser, bandwidth);
@@ -175,7 +150,7 @@ public class Main {
         				System.err.println("Exception: " + e.getMessage()+e.getStackTrace().toString());
         			}
         			try {
-						sleep(10000);
+						sleep(60000);
 					} catch (InterruptedException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
@@ -222,10 +197,7 @@ public class Main {
 		System.out.println("ADD:"+username);
 		User newUser=new User(port, passwd,id);
 		usersinfo.put(username, newUser);
-		if(!userbandwidth.containsKey(username))
-		{
-			userbandwidth.put(username, (long) 0);
-		}
+		userbandwidth.put(username, (long) 0);
 		String back=exec("iptables -L --line-number -n|grep \"spt:"+usersinfo.get(username).getPort()+"\"|awk -F' ' '{print $1}'");
 		String[] array=back.split("\n");
 		for(int i=0;i<array.length;i++)
