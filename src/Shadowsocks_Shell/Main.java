@@ -206,7 +206,7 @@ public class Main {
 		}
 		Runtime run = Runtime.getRuntime();
 		try {
-			run.exec("ss-server -p "+port+" -k "+passwd+" -m aes-256-cfb -f ./ssshell/"+id+".pid -u -s "+ip);
+			run.exec("/usr/local/bin/ss-server -p "+port+" -k "+passwd+" -m aes-256-cfb -f ./ssshell/"+id+".pid -u -s "+ip);
 			run.exec("iptables -I OUTPUT -s "+ip+" -p tcp --sport "+port);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
