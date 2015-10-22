@@ -4,11 +4,13 @@ public class User {
 	private int Port;
 	private String Passwd;
 	private int id;
+	private int connector;
 	
 	public User(int Port,String Passwd,int id){
 		this.Port=Port;
 		this.Passwd=Passwd;
 		this.id=id;
+		this.connector=0;
 	}
 	
 	public void setPort(int Port){
@@ -17,6 +19,14 @@ public class User {
 	
 	public int getPort(){
 		return this.Port;
+	}
+	
+	public void setConnector(int connector){
+		this.connector=connector;
+	}
+	
+	public int getConnector(){
+		return this.connector;
 	}
 	
 	public void setPasswd(String Passwd){
