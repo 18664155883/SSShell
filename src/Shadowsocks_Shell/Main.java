@@ -15,18 +15,30 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+
+import org.jnetpcap.Pcap;
+import org.jnetpcap.PcapIf;
+import org.jnetpcap.packet.PcapPacket;  
+import org.jnetpcap.packet.PcapPacketHandler;
+import org.jnetpcap.protocol.network.Ip4;
+import org.jnetpcap.protocol.tcpip.Tcp;
+import org.jnetpcap.protocol.tcpip.Udp;  
 
 public class Main {
 	private static HashMap<Integer, User> UsersInfoHashMap;
 	private static HashSet<Integer> TempUserHashSet;
 	private static HashSet<Integer> UserPortList = new HashSet<Integer>();
 	private static HashMap<Integer, Long> UserBandwidthHashMap;
+	private static HashMap<Integer,Long> PortBandWidthHashMap = new HashMap<Integer,Long>();
+	private static HashMap<Integer,Long> PortOnlineHashMap = new HashMap<Integer,Long>();
 	private static int Node_Class;
 	private static String Node_ID;
 	private static String Node_IP;
@@ -38,6 +50,8 @@ public class Main {
 	private static String DB_Password;
 	private static int Version;
 	private static boolean Node_Enable;
+	private static String Node_Nic;
+	protected static int Node_SpeedLimit;
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
@@ -49,6 +63,7 @@ public class Main {
 				properties.load(input);
 				Node_ID = properties.getProperty("nodeid");
 				Node_IP = properties.getProperty("ip");
+				Node_Nic = properties.getProperty("nic");
 				DB_Address = properties.getProperty("db_address");
 				DB_Name = properties.getProperty("db_name");
 				DB_Username = properties.getProperty("db_username");
@@ -66,6 +81,9 @@ public class Main {
 		Exec("killall ss-server",false);
 		Exec("rm -rf /tmp/ssshell/*.pid",false);
 		
+		ResetSpeedLimit();
+		PrepareSpeedLimit();
+		
 		File FolderFile=new File("/tmp/ssshell");
 		if(!FolderFile.exists()&&!FolderFile.isDirectory())
 		{
@@ -75,6 +93,137 @@ public class Main {
 		
 		UsersInfoHashMap = new HashMap<Integer,User>();
 		UserBandwidthHashMap = new HashMap<Integer,Long>();
+		
+		
+		List<PcapIf> alldevs = new ArrayList<PcapIf>(); // Will be filled with NICs  
+        StringBuilder errbuf = new StringBuilder(); // For any error msgs  
+		
+        int r = Pcap.findAllDevs(alldevs, errbuf);  
+        if (r == Pcap.NOT_OK || alldevs.isEmpty()) {  
+            System.err.printf("Can't read list of devices, error is %s", errbuf  
+                .toString());  
+            return;  
+        }  
+  
+        int i = 0;
+        int any = 0;
+        
+        for (PcapIf device : alldevs) {  
+            if(device.getName().equals("any"))
+            {
+            	any = i;
+            }
+            i++;
+        }  
+  
+        if(any == 0)
+        {
+        	any = i;
+        }
+        
+        PcapIf device = alldevs.get(any); // We know we have atleast 1 device  
+  
+        int snaplen = 64 * 1024;           // Capture all packets, no trucation  
+        int flags = Pcap.MODE_PROMISCUOUS; // capture all packets  
+        int timeout = 10 * 1000;           // 10 seconds in millis  
+        Pcap pcap =  
+            Pcap.openLive(device.getName(), snaplen, flags, timeout, errbuf);  
+  
+        if (pcap == null) {  
+            System.err.printf("Error while opening device for capture: "  
+                + errbuf.toString());  
+            return;  
+        }  
+        
+      
+  
+        PcapPacketHandler<String> jpacketHandler = new PcapPacketHandler<String>() {  
+  
+            public void nextPacket(PcapPacket packet, String user) { 
+            	
+            	Boolean Out = false;
+            	String IP = "";
+            	
+            	if(packet.hasHeader(new Ip4()))
+                {
+                    Ip4 ip = packet.getHeader(new Ip4());                    
+                    IP = getIpAddress(ip.source());
+                    if(IP.equals(Node_IP))
+                    {
+                    	Out = true;
+                    }
+                    IP = getIpAddress(ip.destination());
+                    if(!IP.equals(Node_IP))
+                    {
+                    	return;
+                    }
+                }
+
+                if(packet.hasHeader(new Tcp()))
+                {
+                    Tcp tcp = packet.getHeader(new Tcp());
+                    if(Out == true)
+                    {
+                    	if(UserPortList.contains(tcp.source()))
+                    	{
+                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.getTotalSize());
+                    		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+                    	}
+                    }
+                    else
+                    {
+                    	if(UserPortList.contains(tcp.destination()))
+                    	{
+                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getTotalSize());
+                    		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
+                    	}
+                    }
+                    return;
+                }
+
+                if(packet.hasHeader(new Udp()))
+                {
+                    Udp udp = packet.getHeader(new Udp());
+                    udp.source();
+                    udp.destination();
+                    if(Out == true)
+                    {
+                    	if(UserPortList.contains(udp.source()))
+                    	{
+                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getTotalSize());
+                    		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+                    	}
+                    }
+                    else
+                    {
+                    	if(UserPortList.contains(udp.destination()))
+                    	{
+                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getTotalSize());
+                    		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
+                    	}
+                    }
+                    return;
+                }
+                
+            }  
+        };  
+  
+        
+        
+        new Thread(){
+        	@Override
+        	public void run()
+        	{
+        		while(true)
+                {
+                	pcap.loop(1000, jpacketHandler, "jNetPcap rocks!");  
+                }
+        	}
+        }.start();
+		
+		
+		
+		
 		new Thread(){
 			@Override
         	public void run()
@@ -104,6 +253,7 @@ public class Main {
                         if(Version==3)
                         { 
                         	Node_Class=SelectNodeResultSet.getInt("node_class");
+                        	Node_SpeedLimit=SelectNodeResultSet.getInt("node_speedlimit");
 	                        Long node_bandwidth = Long.valueOf(String.valueOf(SelectNodeResultSet.getBigDecimal("node_bandwidth")));
 	                        Long node_bandwidth_limit = Long.valueOf(String.valueOf(SelectNodeResultSet.getBigDecimal("node_bandwidth_limit")));
 	                        if( node_bandwidth_limit == 0||( node_bandwidth_limit != 0 && node_bandwidth_limit > node_bandwidth ))
@@ -117,6 +267,7 @@ public class Main {
                         }
                         else
                         {
+                        	Node_SpeedLimit = 0;
                         	Node_Enable = true;
                         }
                         
@@ -147,16 +298,48 @@ public class Main {
                             		//监控端口变更和密码变更
                             		User SingleUser=UsersInfoHashMap.get(SelectUserInfoResultSet.getInt("id"));
                             		
-                            		if(!SingleUser.getPasswd().equals(SelectUserInfoResultSet.getString("passwd"))||SingleUser.getPort()!=SelectUserInfoResultSet.getInt("port")||!SingleUser.getMethod().equals(SelectUserInfoResultSet.getString("method")))
+                            		int SingleUserSpeedLimit = 0;
+                            		
+                            		if(Version == 3)
+                            		{
+                            		
+	                            		if(SelectUserInfoResultSet.getInt("node_speedlimit")>Node_SpeedLimit)
+	                            		{
+	                            			SingleUserSpeedLimit = SelectUserInfoResultSet.getInt("node_speedlimit");
+	                            		}
+	                            		else
+	                            		{
+	                            			SingleUserSpeedLimit = Node_SpeedLimit;
+	                            		}
+	                            		
+                            		}
+                            		
+                            		if(!SingleUser.getPasswd().equals(SelectUserInfoResultSet.getString("passwd"))||SingleUser.getPort()!=SelectUserInfoResultSet.getInt("port")||!SingleUser.getMethod().equals(SelectUserInfoResultSet.getString("method"))||SingleUser.getSpeedLimit()!=SingleUserSpeedLimit)
                             		{
                             			DeleteUser(SelectUserInfoResultSet.getInt("id"));
-                            			AddUser(SelectUserInfoResultSet.getString("user_name"),SelectUserInfoResultSet.getInt("port"),SelectUserInfoResultSet.getString("passwd"),SelectUserInfoResultSet.getInt("id"),SelectUserInfoResultSet.getString("method"));
+                            			AddUser(SelectUserInfoResultSet.getString("user_name"),SelectUserInfoResultSet.getInt("port"),SelectUserInfoResultSet.getString("passwd"),SelectUserInfoResultSet.getInt("id"),SelectUserInfoResultSet.getString("method"),SingleUserSpeedLimit);
                             		}
                                 }
                                 else
                                 {
                                 	//不存在时
-                                	AddUser(SelectUserInfoResultSet.getString("user_name"),SelectUserInfoResultSet.getInt("port"),SelectUserInfoResultSet.getString("passwd"),SelectUserInfoResultSet.getInt("id"),SelectUserInfoResultSet.getString("method")); 	
+                                	int SingleUserSpeedLimit = 0;
+                            		
+                                	if(Version == 3)
+                            		{
+                            		
+	                            		if(SelectUserInfoResultSet.getInt("node_speedlimit")>Node_SpeedLimit)
+	                            		{
+	                            			SingleUserSpeedLimit = SelectUserInfoResultSet.getInt("node_speedlimit");
+	                            		}
+	                            		else
+	                            		{
+	                            			SingleUserSpeedLimit = Node_SpeedLimit;
+	                            		}
+	                            		
+                            		}
+                            		
+                                	AddUser(SelectUserInfoResultSet.getString("user_name"),SelectUserInfoResultSet.getInt("port"),SelectUserInfoResultSet.getString("passwd"),SelectUserInfoResultSet.getInt("id"),SelectUserInfoResultSet.getString("method"),SingleUserSpeedLimit); 	
                                 }
                             }
                         }
@@ -176,63 +359,39 @@ public class Main {
                         long ThisTimeSumBandwidth = 0;
                         
                         Log("info","Getting the OnlineUser.....");
-                        String OnlineUserString = Exec("netstat -antp|grep "+Node_IP+":|awk -F ' ' '{print $4\"-\"$5}'|grep -v 0.0.0.0",true);
-                		String[] OnlineUserStringArray = OnlineUserString.split("\n");
-                		OnlineUserString = null;
                 		
-                		HashSet<String> ExistIpHashSet = new HashSet<String>();
                 		int OnlineUserCount = 0;
                 		
-                		for(String OnlineUserSingle:OnlineUserStringArray)
+                		Set<Integer> PortSet = PortOnlineHashMap.keySet();
+                		Iterator<Integer> PortSetItertor = PortSet.iterator();
+                		
+                		HashSet<Integer> DeletePortSet = new HashSet<Integer>();
+                		
+                		while(PortSetItertor.hasNext())
                 		{
-                			String[] OnlineUserTempStringArray = OnlineUserSingle.split("-");
-                			String[] OnlineUserPortArray = OnlineUserTempStringArray[0].split(":");
-                			String OnlineUserPort = OnlineUserPortArray[1];
-                			if(OnlineUserPort.equals(""))
+                			int Port = PortSetItertor.next();
+                			if(PortOnlineHashMap.get(Port) > Long.valueOf(System.currentTimeMillis()/1000) - 300)
                 			{
-                				OnlineUserPort=OnlineUserPortArray[4];
+                				OnlineUserCount++;
                 			}
-                			
-                			String[] UserIPArray=OnlineUserTempStringArray[1].split(":");
-                			String OnlineUserIP=UserIPArray[0];
-                			if(OnlineUserIP.equals(""))
+                			else
                 			{
-                				OnlineUserIP = UserIPArray[3];
-                			}
-                			
-                			if(UserPortList.contains(Integer.valueOf(OnlineUserPort)))
-                			{
-                				if(!ExistIpHashSet.contains(OnlineUserIP))
-                				{
-                					OnlineUserCount++;
-                					ExistIpHashSet.add(OnlineUserIP);
-                				}
+                				DeletePortSet.add(Port);
                 			}
                 		}
                 		
-                		OnlineUserStringArray = null;
-                		ExistIpHashSet = null;
-                		           		
-                		String BandWidthString = Exec("iptables -n -v -L -t filter -x |awk -F' ' '{print $2\"-\"$10}'|grep spt",true);
-                		String[] BandWidthArray = BandWidthString.split("\n");
-                		BandWidthString = null;
+                		PortSetItertor = null;
+                		PortSet = null;
                 		
-                		HashMap<Integer,Long> PortBandWidthHashMap = new HashMap<Integer,Long>();
+                		Iterator<Integer> DeletePortIterator = DeletePortSet.iterator();
                 		
-                		for(String BandWidthLine:BandWidthArray)
+                		while(DeletePortIterator.hasNext())
                 		{
-                			String[] BandWidthTemp = BandWidthLine.split("-");
-                			String[] BandWidthPort = BandWidthTemp[1].split(":");
-                			PortBandWidthHashMap.put(Integer.valueOf(BandWidthPort[1]), Long.valueOf(BandWidthTemp[0]));
+                			PortOnlineHashMap.remove(DeletePortIterator.next());
                 		}
                 		
-                		String PortString=Exec("netstat -antp|grep "+Node_IP+":|grep 0.0.0.0:*|awk -F' ' '{print $4}'|awk -F':' '{print $2}'",true);
-                		String[] PortArray=PortString.split("\n");
-                		HashSet<Integer> PortSet=new HashSet<Integer>();
-                		for(String Port:PortArray)
-                		{
-                			PortSet.add(Integer.valueOf(Port));
-                		}
+                		DeletePortIterator = null;
+                		DeletePortSet = null;
                 		
                 		Set<Integer> UsersInfoSet = UsersInfoHashMap.keySet();
                         Iterator<Integer> UsersInfoIterator = UsersInfoSet.iterator();
@@ -268,24 +427,14 @@ public class Main {
                     				}
                     			}
                     		}
-                        	else
-                        	{
-                        		Exec("iptables -A OUTPUT -s "+Node_IP+" -p tcp --sport "+UsersInfoHashMap.get(CurrentUserId).getPort(),false);
-                        	}
                         	
-                        	if(!PortSet.contains(UsersInfoHashMap.get(CurrentUserId).getPort()))
-                        	{
-                        		Exec("ss-server -c /tmp/ssshell/"+CurrentUserId+".conf -f /tmp/ssshell/"+CurrentUserId+".pid -u -s "+Node_IP,false);
-                        	}
-                    		
                         	if(!TempUserHashSet.contains(CurrentUserId))
                         	{
                         		DeletedUserHashSet.add(CurrentUserId);
                         	}
                         }
                         
-                        PortSet = null;
-                        PortBandWidthHashMap = null;
+                        
                         
                         if(Version == 3)
                         {
@@ -294,12 +443,20 @@ public class Main {
 							LastSumBandwidth = ThisTimeSumBandwidth;
 							UpdateNodeStatement = null;
                         }
+                        
 						if(Version == 2 || Version == 3)
 						{
 	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
 	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_online_log` (`id`, `Node_ID`, `online_user`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+OnlineUserCount+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
 	                        AddNodeOnlineLogStatement = null;
 						}
+						
+						if(Version == 2 || Version == 3)
+						{
+	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
+	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+GetUptime()+"', '"+GetLoad()+"', '"+String.valueOf(Long.valueOf(System.currentTimeMillis()/1000))+"'); ");
+	                        AddNodeOnlineLogStatement = null;
+	                    }
                         
                     	Iterator<Integer> DeletedUserIterator = DeletedUserHashSet.iterator();
                     	while(DeletedUserIterator.hasNext())
@@ -355,9 +512,66 @@ public class Main {
         return null;
     }
 	
+	public static void ForkChild(String cmd)
+	{
+		Process childProcess;
+		try {
+			childProcess = new ProcessBuilder(cmd).start();
+			Thread closeChildThread = new Thread() {
+			    public void run() {
+			        childProcess.destroy();
+			    }
+			};
+			Runtime.getRuntime().addShutdownHook(closeChildThread); 
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void PrepareSpeedLimit()
+	{
+		Exec("tc qdisc add dev "+Node_Nic+" handle 8964: root htb",true);
+	}
+	
+	public static void AddSpeedLimit(String Port,String Speed)
+	{
+		Exec("tc class add dev "+Node_Nic+" parent 8964: classid 8964:"+Port+" htb rate "+Speed+"mbps",true);
+		Exec("tc filter add dev "+Node_Nic+" protocol ip prio 1 u32 match ip dport "+Port+" 0xffff flowid 1:"+Port,true);
+	}
+	
+	public static void DeleteSpeedLimit(String Port)
+	{
+		String ReturnString = Exec("tc filter list dev "+Node_Nic+" |grep \"flowid 1:"+Port+"\"|awk '{print $10}'",true);
+		String[] ReturnArray = ReturnString.split("\n");
+		for(String Id:ReturnArray)
+		{
+			Exec("tc filter delete dev "+Node_Nic+" parent 1: protocol ip prio 1 handle "+Id+" u32",true);
+		}
+	}
+
+	public static void ResetSpeedLimit()
+	{
+		Exec("tc qdisc del dev "+Node_Nic+" root",true);
+	}
+	
+	public static String GetUptime()
+	{
+		String ReturnString = Exec("cat /proc/uptime | awk '{ print $1 }'",true);
+		String[] ReturnArray = ReturnString.split("\n");
+		return ReturnArray[0];
+	}
+	
+	public static String GetLoad()
+	{
+		String ReturnString = Exec("cat /proc/loadavg | awk '{ print $1\" \"$2\" \"$3 }'",true);
+		String[] ReturnArray = ReturnString.split("\n");
+		return ReturnArray[0];
+	}
+	
 	public static void Log(String LogLevel,String LogContent)
 	{
-		SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");//设置日期格式
+		SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 		System.out.println("["+LogLevel+"]["+df.format(new Date())+"]"+LogContent);
 	}
 	
@@ -378,11 +592,21 @@ public class Main {
 			return String.valueOf(Traffic/1024/1024)+"MB";
 		}
 		
-		
 		return String.valueOf(Traffic/1024/1024/1024)+"GB";
 		
 	}
 	
+	public static boolean DeleteFile(String fileName){     
+	    File file = new File(fileName);     
+	    if(file.isFile() && file.exists()){     
+	        file.delete();     
+	        return true;     
+	    }else{     
+	    	return false;     
+	    }     
+	}
+
+
 	public static void DeleteUser(int UserId)
 	{
 		try{
@@ -401,75 +625,70 @@ public class Main {
 				PidFile.delete();
 			}
 			
-			Exec("rm -f /tmp/ssshell/"+UserId+".conf",false);
-		
-			String BandWidthString=Exec("iptables -L --line-number -n|grep \"spt:"+UsersInfoHashMap.get(UserId).getPort()+"\"|awk -F' ' '{print $1}'",false);
-			String[] BandWidthArray=BandWidthString.split("\n");
-			
-    		for(int i = 0;i < BandWidthArray.length; i++)
-    		{
-    			Exec("iptables -D OUTPUT -s "+Node_IP+" -p tcp --sport "+UsersInfoHashMap.get(UserId).getPort(),false);
-    		}
+			DeleteFile("/tmp/ssshell/"+UserId+".conf");
 		
     		UserPortList.remove(UsersInfoHashMap.get(UserId).getPort());
+    		PortBandWidthHashMap.remove(UsersInfoHashMap.get(UserId).getPort());
+    		
+    		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0)
+    		{
+    			DeleteSpeedLimit(String.valueOf(UsersInfoHashMap.get(UserId).getPort()));
+    		}
+    		
 			UsersInfoHashMap.remove(UserId);
 			UserBandwidthHashMap.remove(UserId);
+			
 			
 		}catch(Exception e) {
 			System.err.println("Exception: " + e.getMessage());
 		}
 	}
-
-	public static void AddUser(String UserName,int Port,String Passwd,int Id,String Method)
+	
+	public static void AddUser(String UserName,int Port,String Passwd,int Id,String Method,int SpeedLimit)
 	{
 		Log("info","Adding User..."+UserName);
 		
-		Exec("rm -f /tmp/ssshell/"+Id+".conf",false);
+		DeleteFile("/tmp/ssshell/"+Id+".conf");
 		
-		User newUser = new User(Port,Passwd,Id,Method);
+		User newUser = new User(Port,Passwd,Id,Method,SpeedLimit);
 		
 		UsersInfoHashMap.put(Id, newUser);
 		UserBandwidthHashMap.put(Id, (long) 0);
-		
-		String BandWidthString = Exec("iptables -L --line-number -n|grep \"spt:"+UsersInfoHashMap.get(Id).getPort()+"\"|awk -F' ' '{print $1}'",true);
-		String[] BandWidthArray = BandWidthString.split("\n");
-		
-		for(int i = 0;i < BandWidthArray.length; i++)
-		{
-			Exec("iptables -D OUTPUT -s "+Node_IP+" -p tcp --sport "+UsersInfoHashMap.get(Id).getPort(),false);
-		}
+		PortBandWidthHashMap.put(Port, (long) 0);
 		
 		try {
-	         BufferedWriter out = new BufferedWriter(new FileWriter("/tmp/ssshell/"+Id+".conf"));
-	         out.write("{\"server\":\""+Node_IP+"\",\"server_port\":"+Port+",\"local_port\":1080,\"password\":\""+Passwd+"\",\"timeout\":60,\"method\":\""+Method+"\"}");
-	         out.close();
+	         BufferedWriter FileOutPutWriter = new BufferedWriter(new FileWriter("/tmp/ssshell/"+Id+".conf"));
+	         FileOutPutWriter.write("{\"server\":\""+Node_IP+"\",\"server_port\":"+Port+",\"local_port\":1080,\"password\":\""+Passwd+"\",\"timeout\":60,\"method\":\""+Method+"\"}");
+	         FileOutPutWriter.close();
 		} catch (IOException e) {
+			System.err.println("Exception: " + e.getMessage()+e.getStackTrace().toString()+e.getLocalizedMessage()+e.getCause());
 		}
 		
-		Exec("chown 600 /tmp/ssshell/"+Id+".conf",false);
+		Exec("chmod 600 /tmp/ssshell/"+Id+".conf",false);
 		
-		Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -s "+Node_IP,false);
-		Exec("iptables -A OUTPUT -s "+Node_IP+" -p tcp --sport "+Port,false);
-		
+		Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -s "+Node_IP,true);
+
 		UserPortList.add(Port);
 		
-		while(true)
+		if(SpeedLimit != 0)
 		{
-			BandWidthString = Exec("iptables -L --line-number -n|grep \"spt:"+Port+"\"",true);
-			BandWidthArray = BandWidthString.split("\n");
-			if(!BandWidthString.contains("spt")||BandWidthArray.length!=1)
-			{
-	    		for(int i = 0;i < BandWidthArray.length; i++)
-	    		{
-	    			Exec("iptables -D OUTPUT -s "+Node_IP+" -p tcp --sport "+Port,false);
-	    		}
-	    		
-	    		Exec("iptables -A OUTPUT -s "+Node_IP+" -p tcp --sport "+Port,false);
-			}
-			else
-			{
-				break;
-			}
-		}	
+			AddSpeedLimit(String.valueOf(Port),String.valueOf(SpeedLimit));
+		}
+		
 	}
+	
+	public static String getIpAddress(byte[] rawBytes) {
+        int i = 4;
+        String ipAddress = "";
+        for (byte raw : rawBytes)
+        {
+            ipAddress += (raw & 0xFF);
+            if (--i > 0)
+            {
+                ipAddress += ".";
+            }
+        }
+
+        return ipAddress;
+    }
 }

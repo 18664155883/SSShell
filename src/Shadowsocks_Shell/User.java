@@ -6,13 +6,15 @@ public class User {
 	private int id;
 	private int connector;
 	private String Method;
+	private int SpeedLimit;
 	
-	public User(int Port,String Passwd,int id,String method){
-		this.Port=Port;
-		this.Passwd=Passwd;
-		this.id=id;
-		this.connector=0;
-		this.Method=method;
+	public User(int Port,String Passwd,int id,String method,int SpeedLimit){
+		this.Port = Port;
+		this.Passwd = Passwd;
+		this.id = id;
+		this.connector = 0;
+		this.Method = method;
+		this.SpeedLimit = SpeedLimit;
 	}
 	
 	public void setPort(int Port){
@@ -21,6 +23,10 @@ public class User {
 	
 	public int getPort(){
 		return this.Port;
+	}
+	
+	public int getSpeedLimit(){
+		return this.SpeedLimit;
 	}
 	
 	public String getMethod(){
