@@ -279,7 +279,7 @@ public class Main {
                         ResultSet SelectUserInfoResultSet = null;
                         if(Version==3)
                         {
-                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>"+String.valueOf(Integer.valueOf((int) (System.currentTimeMillis()/1000)))+" AND `transfer_enable`>`u`+`d`");
+                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>"+TimeStamp2Date(String.valueOf(Long.valueOf((long) (System.currentTimeMillis()/1000))), "yyyy-MM-dd HH:mm:ss")+" AND `transfer_enable`>`u`+`d`");
                         }
                         else
                         {
@@ -463,6 +463,9 @@ public class Main {
                     	{
                     		DeleteUser(DeletedUserIterator.next());
                     	}
+                    	
+                    	DeletedUserIterator = null;
+                    	DeletedUserHashSet = null;
                         
                         
                         try {
@@ -691,4 +694,11 @@ public class Main {
 
         return ipAddress;
     }
+	
+	
+	public static String TimeStamp2Date(String timestampString, String formats){ 
+	  Long timestamp = Long.parseLong(timestampString)*1000; 
+	  String date = new java.text.SimpleDateFormat(formats).format(new java.util.Date(timestamp)); 
+	  return date; 
+	}
 }
