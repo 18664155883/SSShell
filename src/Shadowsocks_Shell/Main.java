@@ -279,7 +279,7 @@ public class Main {
                         ResultSet SelectUserInfoResultSet = null;
                         if(Version==3)
                         {
-                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>"+TimeStamp2Date(String.valueOf(Long.valueOf((long) (System.currentTimeMillis()/1000))), "yyyy-MM-dd HH:mm:ss")+" AND `transfer_enable`>`u`+`d`");
+                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>'"+TimeStamp2Date(String.valueOf(Long.valueOf((long) (System.currentTimeMillis()/1000))), "yyyy-MM-dd HH:mm:ss")+"' AND `transfer_enable`>`u`+`d`");
                         }
                         else
                         {
@@ -661,7 +661,7 @@ public class Main {
 		
 		try {
 	         BufferedWriter FileOutPutWriter = new BufferedWriter(new FileWriter("/tmp/ssshell/"+Id+".conf"));
-	         FileOutPutWriter.write("{\"server\":\""+Node_IP+"\",\"server_port\":"+Port+",\"local_port\":1080,\"password\":\""+Passwd+"\",\"timeout\":60,\"method\":\""+Method+"\"}");
+	         FileOutPutWriter.write("{\"server\":\"0.0.0.0\",\"server_port\":"+Port+",\"local_port\":1080,\"password\":\""+Passwd+"\",\"timeout\":60,\"method\":\""+Method+"\"}");
 	         FileOutPutWriter.close();
 		} catch (IOException e) {
 			System.err.println("Exception: " + e.getMessage()+e.getStackTrace().toString()+e.getLocalizedMessage()+e.getCause());
@@ -669,7 +669,7 @@ public class Main {
 		
 		Exec("chmod 600 /tmp/ssshell/"+Id+".conf",false);
 		
-		Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -s "+Node_IP,true);
+		Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
 
 		UserPortList.add(Port);
 		
