@@ -52,6 +52,7 @@ public class Main {
 	private static boolean Node_Enable;
 	private static String Node_Nic;
 	protected static int Node_SpeedLimit;
+	private static Integer SpeedLimit;
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
@@ -69,6 +70,7 @@ public class Main {
 				DB_Username = properties.getProperty("db_username");
 				DB_Password = properties.getProperty("db_password");
 				Version = Integer.valueOf(properties.getProperty("version"));
+				SpeedLimit = Integer.valueOf(properties.getProperty("speedlimit"));
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -106,7 +108,7 @@ public class Main {
         }  
   
         int i = 0;
-        int any = 0;
+        int any = -1;
         
         for (PcapIf device : alldevs) {  
             if(device.getName().equals("any"))
@@ -116,7 +118,7 @@ public class Main {
             i++;
         }  
   
-        if(any == 0)
+        if(any == -1)
         {
         	any = i;
         }
@@ -125,7 +127,7 @@ public class Main {
   
         int snaplen = 64 * 1024;           // Capture all packets, no trucation  
         int flags = Pcap.MODE_PROMISCUOUS; // capture all packets  
-        int timeout = 10 * 1000;           // 10 seconds in millis  
+        int timeout = 60 * 1000;           // 60 seconds in millis  
         Pcap pcap =  
             Pcap.openLive(device.getName(), snaplen, flags, timeout, errbuf);  
   
@@ -166,7 +168,7 @@ public class Main {
                     {
                     	if(UserPortList.contains(tcp.source()))
                     	{
-                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.getTotalSize());
+                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.size());
                     		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -174,7 +176,7 @@ public class Main {
                     {
                     	if(UserPortList.contains(tcp.destination()))
                     	{
-                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getTotalSize());
+                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.size());
                     		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -190,7 +192,7 @@ public class Main {
                     {
                     	if(UserPortList.contains(udp.source()))
                     	{
-                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getTotalSize());
+                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.size());
                     		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -198,7 +200,7 @@ public class Main {
                     {
                     	if(UserPortList.contains(udp.destination()))
                     	{
-                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getTotalSize());
+                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.size());
                     		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -489,6 +491,20 @@ public class Main {
         		}
         	}
         }.start();
+        
+        new Thread(){
+        	@Override
+        	public void run(){
+        		Exec("yes | cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime",true);
+        		Exec("ntpdate time.nist.gov",true);
+        		try {
+					sleep(86400000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+        	}
+        }.start();
 	}
 
 	
@@ -549,13 +565,23 @@ public class Main {
 		String[] ReturnArray = ReturnString.split("\n");
 		for(String Id:ReturnArray)
 		{
-			Exec("tc filter delete dev "+Node_Nic+" parent 1: protocol ip prio 1 handle "+Id+" u32",true);
+			if(SpeedLimit == 1)
+			{
+				Exec("tc filter delete dev "+Node_Nic+" parent 1: protocol ip prio 1 handle "+Id+" u32",true);
+			}
 		}
 	}
 
 	public static void ResetSpeedLimit()
 	{
-		Exec("tc qdisc del dev "+Node_Nic+" root",true);
+		if(SpeedLimit == 1)
+		{
+			Exec("tc qdisc del dev "+Node_Nic+" root",true);
+		}
+		else
+		{
+			Exec("killall trickle",true);
+		}
 	}
 	
 	public static String GetUptime()
@@ -633,7 +659,7 @@ public class Main {
     		UserPortList.remove(UsersInfoHashMap.get(UserId).getPort());
     		PortBandWidthHashMap.remove(UsersInfoHashMap.get(UserId).getPort());
     		
-    		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0)
+    		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0 && SpeedLimit == 1)
     		{
     			DeleteSpeedLimit(String.valueOf(UsersInfoHashMap.get(UserId).getPort()));
     		}
@@ -669,11 +695,21 @@ public class Main {
 		
 		Exec("chmod 600 /tmp/ssshell/"+Id+".conf",false);
 		
-		Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
-
+		if(SpeedLimit != 1)
+		{
+			Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
+		}
+		else
+		{
+			if(SpeedLimit != 0)
+			{
+				Exec("trickle -d "+(SpeedLimit*1024/8)+" -u "+(SpeedLimit*1024/8)+" ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
+			}
+		}
+		
 		UserPortList.add(Port);
 		
-		if(SpeedLimit != 0)
+		if(SpeedLimit != 0 && SpeedLimit == 1)
 		{
 			AddSpeedLimit(String.valueOf(Port),String.valueOf(SpeedLimit));
 		}
