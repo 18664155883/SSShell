@@ -36,14 +36,13 @@ public class Main {
 	private static HashMap<Integer, User> UsersInfoHashMap;
 	private static HashSet<Integer> TempUserHashSet;
 	private static HashSet<Integer> UserPortList = new HashSet<Integer>();
-	private static HashMap<Integer, Long> UserBandwidthHashMap;
+	private static HashMap<String,Long> AliveIpPortHashMap = new HashMap<String,Long>();
 	private static HashMap<Integer,Long> PortBandWidthHashMap = new HashMap<Integer,Long>();
 	private static HashMap<Integer,Long> PortOnlineHashMap = new HashMap<Integer,Long>();
 	private static int Node_Class;
 	private static String Node_ID;
 	private static String Node_IP;
 	private static Float Node_Rate;
-	private static long LastSumBandwidth = (long)0;
 	private static String DB_Address;
 	private static String DB_Name;
 	private static String DB_Username;
@@ -94,7 +93,6 @@ public class Main {
 		FolderFile=null;
 		
 		UsersInfoHashMap = new HashMap<Integer,User>();
-		UserBandwidthHashMap = new HashMap<Integer,Long>();
 		
 		
 		List<PcapIf> alldevs = new ArrayList<PcapIf>(); // Will be filled with NICs  
@@ -170,6 +168,9 @@ public class Main {
                     	{
                     		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.size());
                     		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+                    		
+                    		Ip4 ip = packet.getHeader(new Ip4());
+                    		AliveIpPortHashMap.put(getIpAddress(ip.destination())+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
                     else
@@ -405,26 +406,27 @@ public class Main {
                     		{
                     			if(PortBandWidthHashMap.get(UsersInfoHashMap.get(CurrentUserId).getPort())!=0)
                     			{
-                    				if(UserBandwidthHashMap.containsKey(CurrentUserId))
+                    				//if(UserBandwidthHashMap.containsKey(CurrentUserId))
                     				{
                     					long ThisTimeBandWidth = PortBandWidthHashMap.get(UsersInfoHashMap.get(CurrentUserId).getPort());
+                    					PortBandWidthHashMap.put(UsersInfoHashMap.get(CurrentUserId).getPort(),(long) 0);
                     					ThisTimeSumBandwidth = ThisTimeSumBandwidth + ThisTimeBandWidth;
-                    					if(ThisTimeBandWidth - UserBandwidthHashMap.get(CurrentUserId) > 0)
+                    					if(ThisTimeBandWidth > 0)
                     					{
-                    						Log("info","Syncing the user traffic...."+CurrentUserId+" "+(ThisTimeBandWidth-UserBandwidthHashMap.get(CurrentUserId))*Node_Rate);
+                    						Log("info","Syncing the user traffic...."+CurrentUserId+" "+(ThisTimeBandWidth)*Node_Rate);
                     						
                     						Statement UpdateUserStatement = MysqlConnection.createStatement();
-                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+(ThisTimeBandWidth-UserBandwidthHashMap.get(CurrentUserId))*Node_Rate+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
+                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+(ThisTimeBandWidth)*Node_Rate+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
                     						UpdateUserStatement = null;
                     						
                     						if(Version == 2||Version == 3)
                     						{
 	                    						Statement AddTrafficLogStatement = MysqlConnection.createStatement();
-	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth-UserBandwidthHashMap.get(CurrentUserId))+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((ThisTimeBandWidth-UserBandwidthHashMap.get(CurrentUserId)))+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
+	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((ThisTimeBandWidth))+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
 	                    						AddTrafficLogStatement = null;
                     						}
                     						
-                    						UserBandwidthHashMap.put(CurrentUserId, ThisTimeBandWidth);
+                    						//UserBandwidthHashMap.put(CurrentUserId, ThisTimeBandWidth);
                     					}
                     				}
                     			}
@@ -441,8 +443,7 @@ public class Main {
                         if(Version == 3)
                         {
 	                        Statement UpdateNodeStatement = MysqlConnection.createStatement();
-	                        UpdateNodeStatement.executeUpdate("UPDATE `ss_node` SET `node_heartbeat`='"+Long.valueOf(System.currentTimeMillis()/1000)+"',`node_bandwidth`=`node_bandwidth`+'"+(ThisTimeSumBandwidth-LastSumBandwidth)+"' WHERE `id` = "+Node_ID+"; ");
-							LastSumBandwidth = ThisTimeSumBandwidth;
+	                        UpdateNodeStatement.executeUpdate("UPDATE `ss_node` SET `node_heartbeat`='"+Long.valueOf(System.currentTimeMillis()/1000)+"',`node_bandwidth`=`node_bandwidth`+'"+(ThisTimeSumBandwidth)+"' WHERE `id` = "+Node_ID+"; ");
 							UpdateNodeStatement = null;
                         }
                         
@@ -584,6 +585,11 @@ public class Main {
 		}
 	}
 	
+	public static void AddTempBlock()
+	{
+		
+	}
+	
 	public static String GetUptime()
 	{
 		String ReturnString = Exec("cat /proc/uptime | awk '{ print $1 }'",true);
@@ -665,7 +671,7 @@ public class Main {
     		}
     		
 			UsersInfoHashMap.remove(UserId);
-			UserBandwidthHashMap.remove(UserId);
+			//UserBandwidthHashMap.remove(UserId);
 			
 			
 		}catch(Exception e) {
@@ -682,7 +688,7 @@ public class Main {
 		User newUser = new User(Port,Passwd,Id,Method,SpeedLimit);
 		
 		UsersInfoHashMap.put(Id, newUser);
-		UserBandwidthHashMap.put(Id, (long) 0);
+		//UserBandwidthHashMap.put(Id, (long) 0);
 		PortBandWidthHashMap.put(Port, (long) 0);
 		
 		try {
