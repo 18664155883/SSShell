@@ -177,7 +177,7 @@ public class Main {
                     }
                 }
             	
-            	if(packet.hasHeader(ipv6Header))
+            	/*if(packet.hasHeader(ipv6Header))
                 {
                     Ip6 ip = packet.getHeader(ipv6Header);                    
                     IP = getIpAddress(ip.source());
@@ -197,7 +197,7 @@ public class Main {
 	                    	return;
 	                    }
                     }
-                }
+                }*/
 
                 if(packet.hasHeader(tcpHeader))
                 {
@@ -513,16 +513,16 @@ public class Main {
                     					ThisTimeSumBandwidth = ThisTimeSumBandwidth + ThisTimeBandWidth;
                     					if(ThisTimeBandWidth > 0)
                     					{
-                    						Log("info","Syncing the user traffic...."+CurrentUserId+" "+(ThisTimeBandWidth)*Node_Rate);
+                    						Log("info","Syncing the user traffic...."+CurrentUserId+" "+((ThisTimeBandWidth)*Node_Rate));
                     						
                     						Statement UpdateUserStatement = MysqlConnection.createStatement();
-                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+(ThisTimeBandWidth)*Node_Rate+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
+                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+((ThisTimeBandWidth)*Node_Rate)+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
                     						UpdateUserStatement = null;
                     						
                     						if(Version == 2||Version == 3)
                     						{
 	                    						Statement AddTrafficLogStatement = MysqlConnection.createStatement();
-	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((ThisTimeBandWidth*Long.valueOf(String.valueOf(Node_Rate))))+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
+	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((long)(ThisTimeBandWidth*Node_Rate))+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
 	                    						AddTrafficLogStatement = null;
                     						}
                     						
@@ -569,7 +569,6 @@ public class Main {
                         	AliveIpPortHashMap.remove(DeletedAliveIpPortIterator.next());
                         }
                         
-                        System.out.println("a"+Version);
                         if(Version == 3)
                         {
 	                        Statement UpdateNodeStatement = MysqlConnection.createStatement();
@@ -627,7 +626,7 @@ public class Main {
         	@Override
         	public void run(){
         		Exec("yes | cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime",true);
-        		Exec("ntpdate time.nist.gov",true);
+        		Exec("ntpdate pool.ntp.org",true);
         		try {
 					sleep(86400000);
 				} catch (InterruptedException e) {
