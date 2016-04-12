@@ -29,6 +29,7 @@ import org.jnetpcap.PcapIf;
 import org.jnetpcap.packet.PcapPacket;  
 import org.jnetpcap.packet.PcapPacketHandler;
 import org.jnetpcap.protocol.network.Ip4;
+import org.jnetpcap.protocol.network.Ip6;
 import org.jnetpcap.protocol.tcpip.Tcp;
 import org.jnetpcap.protocol.tcpip.Udp;  
 
@@ -52,6 +53,10 @@ public class Main {
 	private static String Node_Nic;
 	protected static int Node_SpeedLimit;
 	private static Integer SpeedLimit;
+	private static Ip4 ipv4Header = new Ip4();
+	private static Ip6 ipv6Heder = new Ip6();
+    private static Tcp tcpHeader = new Tcp();
+    private static Udp udpHeader = new Udp();
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
@@ -136,7 +141,7 @@ public class Main {
         }  
         
       
-  
+        
         PcapPacketHandler<String> jpacketHandler = new PcapPacketHandler<String>() {  
   
             public void nextPacket(PcapPacket packet, String user) { 
@@ -144,9 +149,9 @@ public class Main {
             	Boolean Out = false;
             	String IP = "";
             	
-            	if(packet.hasHeader(new Ip4()))
+            	if(packet.hasHeader(ipv4Header))
                 {
-                    Ip4 ip = packet.getHeader(new Ip4());                    
+                    Ip4 ip = packet.getHeader(ipv4Header);                    
                     IP = getIpAddress(ip.source());
                     if(IP.equals(Node_IP))
                     {
@@ -158,18 +163,37 @@ public class Main {
                     	return;
                     }
                 }
-
-                if(packet.hasHeader(new Tcp()))
+            	
+            	if(packet.hasHeader(ipv6Heder))
                 {
-                    Tcp tcp = packet.getHeader(new Tcp());
+                    Ip6 ip = packet.getHeader(ipv6Heder);                    
+                    IP = getIpAddress(ip.source());
+                    String[] IParray = IP.split(":");
+                    IP = IParray[3];
+                    if(IP.equals(Node_IP))
+                    {
+                    	Out = true;
+                    }
+                    IP = getIpAddress(ip.destination());
+                    String[] IParray2 = IP.split(":");
+                    IP = IParray2[3];
+                    if(!IP.equals(Node_IP))
+                    {
+                    	return;
+                    }
+                }
+
+                if(packet.hasHeader(tcpHeader))
+                {
+                    Tcp tcp = packet.getHeader(tcpHeader);
                     if(Out == true)
                     {
                     	if(UserPortList.contains(tcp.source()))
                     	{
-                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.size());
+                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.getPacketWirelen());
                     		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     		
-                    		Ip4 ip = packet.getHeader(new Ip4());
+                    		Ip4 ip = packet.getHeader(ipv4Header);
                     		AliveIpPortHashMap.put(getIpAddress(ip.destination())+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -177,23 +201,21 @@ public class Main {
                     {
                     	if(UserPortList.contains(tcp.destination()))
                     	{
-                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.size());
+                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getPacketWirelen());
                     		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
                     return;
                 }
 
-                if(packet.hasHeader(new Udp()))
+                if(packet.hasHeader(udpHeader))
                 {
-                    Udp udp = packet.getHeader(new Udp());
-                    udp.source();
-                    udp.destination();
+                    Udp udp = packet.getHeader(udpHeader);
                     if(Out == true)
                     {
                     	if(UserPortList.contains(udp.source()))
                     	{
-                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.size());
+                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getPacketWirelen());
                     		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
@@ -201,7 +223,7 @@ public class Main {
                     {
                     	if(UserPortList.contains(udp.destination()))
                     	{
-                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.size());
+                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getPacketWirelen());
                     		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
                     	}
                     }
