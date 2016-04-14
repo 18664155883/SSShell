@@ -157,121 +157,136 @@ public class Main {
             public void nextPacket(PcapPacket packet, String user) { 
             	
             	Boolean Out = false;
-            	String IP = "";
+            	String sIP = "";
+            	String dIP = "";
             	
             	if(packet.hasHeader(ipv4Header))
                 {
                     Ip4 ip = packet.getHeader(ipv4Header);                    
-                    IP = getIpAddress(ip.source());
-                    if(IP.equals(Node_IP))
+                    sIP = getIpAddress(ip.source());
+                    if(sIP.equals(Node_IP))
                     {
                     	Out = true;
                     }
                     else
                     {
-	                    IP = getIpAddress(ip.destination());
-	                    if(!IP.equals(Node_IP))
+	                    dIP = getIpAddress(ip.destination());
+	                    if(!dIP.equals(Node_IP))
 	                    {
 	                    	return;
 	                    }
                     }
-                }
-            	
-            	/*if(packet.hasHeader(ipv6Header))
-                {
-                    Ip6 ip = packet.getHeader(ipv6Header);                    
-                    IP = getIpAddress(ip.source());
-                    String[] IParray = IP.split(":");
-                    IP = IParray[3];
-                    if(IP.equals(Node_IP))
-                    {
-                    	Out = true;
-                    }
-                    else
-                    {
-	                    IP = getIpAddress(ip.destination());
-	                    String[] IParray2 = IP.split(":");
-	                    IP = IParray2[3];
-	                    if(!IP.equals(Node_IP))
-	                    {
-	                    	return;
-	                    }
-                    }
-                }*/
-
-                if(packet.hasHeader(tcpHeader))
-                {
-                    Tcp tcp = packet.getHeader(tcpHeader);
-                    if(Out == true)
-                    {
-                    	if(UserPortList.contains(tcp.source()))
-                    	{
-                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.getPacketWirelen());
-                    		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
-                    		if(packet.hasHeader(ipv4Header))
-                            {
-                    			Ip4 ip = packet.getHeader(ipv4Header);
-                    			
-                    			if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))!=0)
-                    			{
-                    				if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))<UserCurrentIP.get(tcp.source()).size())
-                    				{
-                    					if(!UserCurrentIP.get(tcp.source()).contains(getIpAddress(ip.destination())))
-            							{	
-                    						AddTempBlock(getIpAddress(ip.destination()),tcp.source());
-                    						return;
-            							}
-                    				}
-                    			}
-                    			
-                    			AliveIpPortHashMap.put(getIpAddress(ip.destination())+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
-                            }
-                    		else
-                    		{
-                    			if(packet.hasHeader(ipv6Header))
-                                {
-                    				Ip6 ip = packet.getHeader(ipv6Header);
-                    				IP = getIpAddress(ip.destination());
-            	                    String[] IParray = IP.split(":");
-            	                    IP = IParray[3];
-                        			AliveIpPortHashMap.put(IP+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
-                                }
-                    		}
-                    	}
-                    }
-                    else
-                    {
-                    	if(UserPortList.contains(tcp.destination()))
-                    	{
-                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getPacketWirelen());
-                    		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
-                    	}
-                    }
-                    return;
-                }
-
-                if(packet.hasHeader(udpHeader))
-                {
-                    Udp udp = packet.getHeader(udpHeader);
-                    if(Out == true)
-                    {
-                    	if(UserPortList.contains(udp.source()))
-                    	{
-                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getPacketWirelen());
-                    		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
-                    	}
-                    }
-                    else
-                    {
-                    	if(UserPortList.contains(udp.destination()))
-                    	{
-                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getPacketWirelen());
-                    		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
-                    	}
-                    }
-                    return;
-                }
+                    
+                    
                 
+            	
+	            	/*if(packet.hasHeader(ipv6Header))
+	                {
+	                    Ip6 ip = packet.getHeader(ipv6Header);                    
+	                    IP = getIpAddress(ip.source());
+	                    String[] IParray = IP.split(":");
+	                    IP = IParray[3];
+	                    if(IP.equals(Node_IP))
+	                    {
+	                    	Out = true;
+	                    }
+	                    else
+	                    {
+		                    IP = getIpAddress(ip.destination());
+		                    String[] IParray2 = IP.split(":");
+		                    IP = IParray2[3];
+		                    if(!IP.equals(Node_IP))
+		                    {
+		                    	return;
+		                    }
+	                    }
+	                }*/
+	
+	                if(packet.hasHeader(tcpHeader))
+	                {
+	                    Tcp tcp = packet.getHeader(tcpHeader);
+	                    if(Out == true)
+	                    {
+	                    	if(UserPortList.contains(tcp.source()))
+	                    	{
+	                    		if(packet.size()>100)
+	                    		{
+		                    		PortBandWidthHashMap.put(tcp.source(),PortBandWidthHashMap.get(tcp.source())+packet.getPacketWirelen());
+		                    		PortOnlineHashMap.put(tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+		                    		//if(packet.hasHeader(ipv4Header))
+		                            {	                    			
+		                    			if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))!=0)
+		                    			{
+		                    				if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))<UserCurrentIP.get(tcp.source()).size())
+		                    				{
+		                    					if(!UserCurrentIP.get(tcp.source()).contains(getIpAddress(ip.destination())))
+		            							{	
+		                    						AddTempBlock(getIpAddress(ip.destination()),tcp.source());
+		                    						return;
+		            							}
+		                    				}
+		                    			}
+		                    			
+		                    			AliveIpPortHashMap.put(getIpAddress(ip.destination())+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+		                            }
+	                    		}
+	                    		/*else
+	                    		{
+	                    			if(packet.hasHeader(ipv6Header))
+	                                {
+	                    				Ip6 ip = packet.getHeader(ipv6Header);
+	                    				IP = getIpAddress(ip.destination());
+	            	                    String[] IParray = IP.split(":");
+	            	                    IP = IParray[3];
+	                        			AliveIpPortHashMap.put(IP+"-"+tcp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+	                                }
+	                    		}*/
+	                    	}
+	                    }
+	                    else
+	                    {
+	                    	if(UserPortList.contains(tcp.destination()))
+	                    	{
+	                    		if(packet.size()>80)
+	                    		{
+		                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getPacketWirelen());
+		                    		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
+	                    		}
+	                    		return;
+	                    	}
+	                    }
+	                    return;
+                	}
+	                
+	                if(packet.hasHeader(udpHeader))
+	                {
+	                    Udp udp = packet.getHeader(udpHeader);
+	                    if(Out == true)
+	                    {
+	                    	if(UserPortList.contains(udp.source()))
+	                    	{
+	                    		if(packet.size()>100)
+	                    		{
+		                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getPacketWirelen());
+		                    		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+	                    		}
+	                    	}
+	                    }
+	                    else
+	                    {
+	                    	if(UserPortList.contains(udp.destination()))
+	                    	{
+	                    		if(packet.size()>80)
+	                    		{
+		                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getPacketWirelen());
+		                    		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
+	                    		}
+	                    	}
+	                    }
+	                    return;
+	                }
+                    
+                }
             }  
         };  
   
@@ -429,35 +444,37 @@ public class Main {
                         SelectUserInfoStatement = null;
                         SelectUserInfoResultSet = null;
                         
-                        
-                        HashSet<Integer> firstTimeMeetUser = new HashSet<Integer>();
-                        Statement GetAliveIpStatement = MysqlConnection.createStatement();
-                        ResultSet GetAliveIpSet = GetAliveIpStatement.executeQuery("SELECT * FROM `alive_ip` where `datetime`>'"+Long.valueOf(System.currentTimeMillis()/1000-90)+"'");
-                        while (GetAliveIpSet.next()) {
-                        	if(UserLimitCount.containsKey(GetAliveIpSet.getInt("userid")))
-                        	{
-                        		if(!firstTimeMeetUser.contains(GetAliveIpSet.getInt("userid")))
-                        		{
-                        			HashSet<String> TempIpHashSet = new HashSet<String>();
-                        			
-                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
-                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
-                        			
-                        			firstTimeMeetUser.add(GetAliveIpSet.getInt("userid"));
-                        		}
-                        		else
-                        		{
-                        			HashSet<String> TempIpHashSet = UserCurrentIP.get(GetAliveIpSet.getInt("userid"));
-                        		
-                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
-                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
-                        		}
-                        	}
+                        if(Version == 3)
+                        {
+	                        HashSet<Integer> firstTimeMeetUser = new HashSet<Integer>();
+	                        Statement GetAliveIpStatement = MysqlConnection.createStatement();
+	                        ResultSet GetAliveIpSet = GetAliveIpStatement.executeQuery("SELECT * FROM `alive_ip` where `datetime`>'"+Long.valueOf(System.currentTimeMillis()/1000-90)+"'");
+	                        while (GetAliveIpSet.next()) {
+	                        	if(UserLimitCount.containsKey(GetAliveIpSet.getInt("userid")))
+	                        	{
+	                        		if(!firstTimeMeetUser.contains(GetAliveIpSet.getInt("userid")))
+	                        		{
+	                        			HashSet<String> TempIpHashSet = new HashSet<String>();
+	                        			
+	                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
+	                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
+	                        			
+	                        			firstTimeMeetUser.add(GetAliveIpSet.getInt("userid"));
+	                        		}
+	                        		else
+	                        		{
+	                        			HashSet<String> TempIpHashSet = UserCurrentIP.get(GetAliveIpSet.getInt("userid"));
+	                        		
+	                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
+	                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
+	                        		}
+	                        	}
+	                        }
+	                        
+	                        GetAliveIpStatement = null;
+	                        GetAliveIpSet = null;
+	                        firstTimeMeetUser = null;
                         }
-                        
-                        GetAliveIpStatement = null;
-                        GetAliveIpSet = null;
-                        firstTimeMeetUser = null;
                         
                         long ThisTimeSumBandwidth = 0;
                         
@@ -538,35 +555,38 @@ public class Main {
                         	}
                         }
                         
-                        
-                        Set<String> AliveIPSet = AliveIpPortHashMap.keySet();
-                        Iterator<String> AliveIpPortIterator = AliveIPSet.iterator();
-                        HashSet<String> DeletedIpUserHashSet = new HashSet<String>();
-                        while(AliveIpPortIterator.hasNext())
+                        if(Version == 3)
                         {
-                        	String IpPort = AliveIpPortIterator.next();
-                        	if(AliveIpPortHashMap.get(IpPort)>Long.valueOf(System.currentTimeMillis()/1000)-60000)
-                        	{
-	                        	String[] IpPortArray = IpPort.split("-");
-	                        	String IP = IpPortArray[0];
-	                        	String Port = IpPortArray[1];
-	                        	Statement AliveIpStatement = MysqlConnection.createStatement();
-	                        	AliveIpStatement.execute("INSERT INTO `alive_ip` (`id`, `nodeid`,`userid`, `ip`, `datetime`) VALUES (NULL, '"+Node_ID+"','"+PortUserIdHashMap.get(Integer.valueOf(Port))+"', '"+IP+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"')");
-	                        	AliveIpStatement = null;
-                        	}
-                        	else
-                        	{
-                        		DeletedIpUserHashSet.add(IpPort);
-                        	}
-                        }
-                        AliveIpPortIterator = null;
-                        AliveIPSet = null;
+	                        Set<String> AliveIPSet = AliveIpPortHashMap.keySet();
+	                        Iterator<String> AliveIpPortIterator = AliveIPSet.iterator();
+	                        HashSet<String> DeletedIpUserHashSet = new HashSet<String>();
+	                        while(AliveIpPortIterator.hasNext())
+	                        {
+	                        	String IpPort = AliveIpPortIterator.next();
+	                        	if(AliveIpPortHashMap.get(IpPort)>Long.valueOf(System.currentTimeMillis()/1000)-60)
+	                        	{
+		                        	String[] IpPortArray = IpPort.split("-");
+		                        	String IP = IpPortArray[0];
+		                        	String Port = IpPortArray[1];
+		                        	Statement AliveIpStatement = MysqlConnection.createStatement();
+		                        	AliveIpStatement.execute("INSERT INTO `alive_ip` (`id`, `nodeid`,`userid`, `ip`, `datetime`) VALUES (NULL, '"+Node_ID+"','"+PortUserIdHashMap.get(Integer.valueOf(Port))+"', '"+IP+"', '"+AliveIpPortHashMap.get(IpPort)+"')");
+		                        	AliveIpStatement = null;
+	                        	}
+	                        	else
+	                        	{
+	                        		DeletedIpUserHashSet.add(IpPort);
+	                        	}
+	                        }
+	                        AliveIpPortIterator = null;
+	                        AliveIPSet = null;
                         
                         
-                        Iterator<String> DeletedAliveIpPortIterator = DeletedIpUserHashSet.iterator();
-                        while(DeletedAliveIpPortIterator.hasNext())
-                        {
-                        	AliveIpPortHashMap.remove(DeletedAliveIpPortIterator.next());
+                        
+	                        Iterator<String> DeletedAliveIpPortIterator = DeletedIpUserHashSet.iterator();
+	                        while(DeletedAliveIpPortIterator.hasNext())
+	                        {
+	                        	AliveIpPortHashMap.remove(DeletedAliveIpPortIterator.next());
+	                        }
                         }
                         
                         if(Version == 3)
