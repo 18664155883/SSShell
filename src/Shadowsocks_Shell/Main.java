@@ -120,10 +120,17 @@ public class Main {
   
         int i = 0;
         int any = -1;
+        int nic = -1;
         
         for (PcapIf device : alldevs) { 
         	System.out.println(device.getName());
             if(device.getName().equals(Node_Nic))
+            {
+            	nic = i;
+            	Log("info", "Get the NIC "+device.getName()+" "+i);
+            }
+            
+            if(device.getName().equals("any"))
             {
             	any = i;
             	Log("info", "Get the NIC "+device.getName()+" "+i);
@@ -131,12 +138,16 @@ public class Main {
             i++;
         }  
   
-        if(any == -1)
+        if(nic == -1)
         {
-        	any = i;
+        	nic = any;
+        	if(nic == -1)
+        	{
+        		nic = i-1;
+        	}
         }
         
-        PcapIf device = alldevs.get(any); // We know we have atleast 1 device  
+        PcapIf device = alldevs.get(nic); // We know we have atleast 1 device  
   
         int snaplen = 64 * 1024;           // Capture all packets, no trucation  
         int flags = Pcap.MODE_PROMISCUOUS; // capture all packets  
@@ -217,9 +228,9 @@ public class Main {
 		                            {	                    			
 		                    			if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))!=0)
 		                    			{
-		                    				if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))<UserCurrentIP.get(tcp.source()).size())
+		                    				if(UserLimitCount.get(PortUserIdHashMap.get(tcp.source()))<UserCurrentIP.get(PortUserIdHashMap.get(tcp.source())).size())
 		                    				{
-		                    					if(!UserCurrentIP.get(tcp.source()).contains(getIpAddress(ip.destination())))
+		                    					if(!UserCurrentIP.get(PortUserIdHashMap.get(tcp.source())).contains(getIpAddress(ip.destination())))
 		            							{	
 		                    						AddTempBlock(getIpAddress(ip.destination()),tcp.source());
 		                    						return;
