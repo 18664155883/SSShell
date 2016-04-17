@@ -60,6 +60,7 @@ public class Main {
 	private static Ip6 ipv6Header = new Ip6();
     private static Tcp tcpHeader = new Tcp();
     private static Udp udpHeader = new Udp();
+	private static Integer Node_SpeedLimit_Method;
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
@@ -77,7 +78,7 @@ public class Main {
 				DB_Username = properties.getProperty("db_username");
 				DB_Password = properties.getProperty("db_password");
 				Version = Integer.valueOf(properties.getProperty("version"));
-				SpeedLimit = Integer.valueOf(properties.getProperty("speedlimit"));
+				Node_SpeedLimit_Method = Integer.valueOf(properties.getProperty("speedlimit"));
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -825,7 +826,7 @@ public class Main {
     		UserLimitCount.remove(UserId);
     		UserCurrentIP.remove(UserId);
     		
-    		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0 && SpeedLimit == 1)
+    		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0 && Node_SpeedLimit_Method == 1)
     		{
     			DeleteSpeedLimit(String.valueOf(UsersInfoHashMap.get(UserId).getPort()));
     		}
@@ -861,13 +862,13 @@ public class Main {
 		
 		Exec("chmod 600 /tmp/ssshell/"+Id+".conf",false);
 		
-		if(SpeedLimit != 1)
+		if(Node_SpeedLimit_Method == 1)
 		{
 			Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
 		}
 		else
 		{
-			if(SpeedLimit != 0)
+			if(Node_SpeedLimit_Method == 2)
 			{
 				Exec("trickle -d "+(SpeedLimit*1024/8)+" -u "+(SpeedLimit*1024/8)+" ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
 			}
@@ -882,7 +883,7 @@ public class Main {
 		
 		PortUserIdHashMap.put(Port, Id);
 		
-		if(SpeedLimit != 0 && SpeedLimit == 1)
+		if(Node_SpeedLimit_Method == 1&&SpeedLimit != 0)
 		{
 			AddSpeedLimit(String.valueOf(Port),String.valueOf(SpeedLimit));
 		}
