@@ -55,7 +55,6 @@ public class Main {
 	private static boolean Node_Enable;
 	private static String Node_Nic;
 	protected static int Node_SpeedLimit;
-	private static Integer SpeedLimit;
 	private static Ip4 ipv4Header = new Ip4();
 	private static Ip6 ipv6Header = new Ip6();
     private static Tcp tcpHeader = new Tcp();
@@ -93,7 +92,7 @@ public class Main {
 		
 		
 		ResetSpeedLimit();
-		if(SpeedLimit == 1)
+		if(Node_SpeedLimit_Method == 1)
 		{
 			PrepareSpeedLimit();
 		}
@@ -699,35 +698,34 @@ public class Main {
 		Exec("tc qdisc add dev "+Node_Nic+" handle 8964: root htb",true);
 	}
 	
-	public static void AddSpeedLimit(String Port,String Speed)
+	public static void AddSpeedLimit(String Port,String Speed,String Id)
 	{
-		Exec("tc class add dev "+Node_Nic+" parent 8964: classid 8964:"+Port+" htb rate "+Speed+"mbps",true);
-		Exec("tc filter add dev "+Node_Nic+" protocol ip prio 1 u32 match ip dport "+Port+" 0xffff flowid 1:"+Port,true);
+		Exec("tc class add dev "+Node_Nic+" parent 8964:0 classid 8964:"+Id+" htb rate "+Speed+"mbps",true);
+		Exec("tc class add dev eth0 parent 8964:"+Id+" classid 8964:"+(Integer.valueOf(Id)+5000)+" htb rate "+Speed+"Mbit ceil "+Speed+"Mbit",true);
+		Exec("tc filter add dev "+Node_Nic+" protocol ip prio 1 u32 match ip dport "+Port+" 0xffff flowid 8964:"+(Integer.valueOf(Id)+5000),true);
+		Exec("tc filter add dev "+Node_Nic+" protocol ip prio 1 u32 match ip sport "+Port+" 0xffff flowid 8964:"+(Integer.valueOf(Id)+5000),true);
 	}
 	
-	public static void DeleteSpeedLimit(String Port)
+	public static void DeleteSpeedLimit(String Id)
 	{
-		String ReturnString = Exec("tc filter list dev "+Node_Nic+" |grep \"flowid 1:"+Port+"\"|awk '{print $10}'",true);
+		String ReturnString = Exec("tc filter list dev "+Node_Nic+" |grep \"flowid 8964:"+Id+"\"|awk '{print $10}'",true);
 		String[] ReturnArray = ReturnString.split("\n");
-		for(String Id:ReturnArray)
+		for(String FId:ReturnArray)
 		{
-			if(SpeedLimit == 1)
+			if(Node_SpeedLimit_Method == 1)
 			{
-				Exec("tc filter delete dev "+Node_Nic+" parent 1: protocol ip prio 1 handle "+Id+" u32",true);
+				Exec("tc filter delete dev "+Node_Nic+" parent 8964:0 protocol ip prio 1 handle "+FId+" u32",true);
 			}
 		}
 	}
 
 	public static void ResetSpeedLimit()
 	{
-		if(SpeedLimit == 1)
-		{
-			Exec("tc qdisc del dev "+Node_Nic+" root",true);
-		}
-		else
-		{
-			Exec("killall trickle",true);
-		}
+	
+		Exec("tc qdisc del dev "+Node_Nic+" root",true);
+	
+		Exec("killall trickle",true);
+	
 	}
 	
 	public static void AddTempBlock(String Ip,int Port)
@@ -828,7 +826,7 @@ public class Main {
     		
     		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0 && Node_SpeedLimit_Method == 1)
     		{
-    			DeleteSpeedLimit(String.valueOf(UsersInfoHashMap.get(UserId).getPort()));
+    			DeleteSpeedLimit(String.valueOf(UserId));
     		}
     		
 			UsersInfoHashMap.remove(UserId);
@@ -864,13 +862,13 @@ public class Main {
 		
 		if(Node_SpeedLimit_Method == 1)
 		{
-			Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
+			Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -d 208.67.222.222",true);
 		}
 		else
 		{
-			if(Node_SpeedLimit_Method == 2)
+			if(Node_SpeedLimit_Method == 2 && SpeedLimit != 0)
 			{
-				Exec("trickle -d "+(SpeedLimit*1024/8)+" -u "+(SpeedLimit*1024/8)+" ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u",true);
+				Exec("trickle -d "+(SpeedLimit*1024/8)+" -u "+(SpeedLimit*1024/8)+" ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -d 208.67.222.222",true);
 			}
 		}
 		
@@ -885,7 +883,7 @@ public class Main {
 		
 		if(Node_SpeedLimit_Method == 1&&SpeedLimit != 0)
 		{
-			AddSpeedLimit(String.valueOf(Port),String.valueOf(SpeedLimit));
+			AddSpeedLimit(String.valueOf(Port),String.valueOf(SpeedLimit),String.valueOf(Id));
 		}
 		
 	}
