@@ -60,6 +60,10 @@ public class Main {
     private static Tcp tcpHeader = new Tcp();
     private static Udp udpHeader = new Udp();
 	private static Integer Node_SpeedLimit_Method;
+	private static Integer Speedtest;
+	private static String Speedtest_cmcc;
+	private static String Speedtest_chinanet;
+	private static String Speedtest_chinaunicome;
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
@@ -78,6 +82,10 @@ public class Main {
 				DB_Password = properties.getProperty("db_password");
 				Version = Integer.valueOf(properties.getProperty("version"));
 				Node_SpeedLimit_Method = Integer.valueOf(properties.getProperty("speedlimit"));
+				Speedtest = Integer.valueOf(properties.getProperty("speedtest"));
+				Speedtest_cmcc = properties.getProperty("cmcc");
+				Speedtest_chinanet = properties.getProperty("telecom");
+				Speedtest_chinaunicome = properties.getProperty("unicom");
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -311,6 +319,82 @@ public class Main {
                 {
                 	pcap.loop(1000, jpacketHandler, "jNetPcap rocks!");  
                 }
+        	}
+        }.start();
+        
+        new Thread(){
+        	@Override
+        	public void run()
+        	{
+        		while(Speedtest != 0)
+        		{
+        			
+        			String tempString = Exec("speedtest-cli --list|grep China|grep Telecom|awk -F')' '{print $1}'",true);
+        			String[] tempArray = tempString.split("\n");
+        			String[] ChinaNetResult = new String[3];
+        			for(String Id:tempArray)
+        			{
+        				ChinaNetResult = ExecSpeedtest("speedtest-cli --server "+Id+" --simple");
+        				if(ChinaNetResult[0] != null)
+        				{
+        					if(!ChinaNetResult[0].contains("1800000.0"))
+        					{
+        						break;
+        					}
+        				}
+        			}
+        			
+        			
+        			tempString = Exec("speedtest-cli --list|grep China|grep Unicom|awk -F')' '{print $1}'",true);
+        			tempArray = tempString.split("\n");
+        			String[] ChinaUnicomResult = new String[3];
+        			for(String Id:tempArray)
+        			{
+        				ChinaUnicomResult = ExecSpeedtest("speedtest-cli --server "+Id+" --simple");
+        				if(ChinaUnicomResult[0] != null)
+        				{
+        					if(!ChinaUnicomResult[0].contains("1800000.0"))
+        					{
+        						break;
+        					}
+        				}
+        			}
+        			
+        			tempString = Exec("speedtest-cli --list|grep China|grep Mobile|awk -F')' '{print $1}'",true);
+        			tempArray = tempString.split("\n");
+        			String[] CmccResult = new String[3];
+        			for(String Id:tempArray)
+        			{
+        				CmccResult = ExecSpeedtest("speedtest-cli --server "+Id+" --simple");
+        				if(CmccResult[0] != null)
+        				{
+        					if(!CmccResult[0].contains("1800000.0"))
+        					{
+        						break;
+        					}
+        				}
+        			}
+        			
+        			Connection MysqlConnection = null;
+        			try{
+	    				Class.forName("com.mysql.jdbc.Driver").newInstance();
+	    				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
+	                    
+	    				Statement AddSpeedtestStatement = MysqlConnection.createStatement();
+	    				AddSpeedtestStatement.execute("INSERT INTO `speedtest` (`id`, `nodeid`, `datetime`, `telecomping`, `telecomeupload`, `telecomedownload`, `unicomping`, `unicomupload`, `unicomdownload`, `cmccping`, `cmccupload`, `cmccdownload`) VALUES (NULL, '"+Node_ID+"', '"+String.valueOf(Long.valueOf(System.currentTimeMillis()/1000))+"', '"+ChinaNetResult[0]+"', '"+ChinaNetResult[1]+"', '"+ChinaNetResult[2]+"', '"+ChinaUnicomResult[0]+"', '"+ChinaUnicomResult[1]+"', '"+ChinaUnicomResult[2]+"', '"+CmccResult[0]+"', '"+CmccResult[1]+"', '"+CmccResult[2]+"')");
+	    				AddSpeedtestStatement = null;
+	    				MysqlConnection.close();
+        			}catch(Exception e){
+        				
+        			}
+        			
+        			try {
+						sleep(Speedtest*3600000);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+        		}
         	}
         }.start();
 		
@@ -692,6 +776,41 @@ public class Main {
         return null;
     }
 	
+	public static String[] ExecSpeedtest(String cmd) {
+		String[] returnvalue = new String[3];
+        try {
+            String[] cmdA = { "/bin/sh", "-c", cmd };
+            Process process = Runtime.getRuntime().exec(cmdA);
+            LineNumberReader br = new LineNumberReader(new InputStreamReader(
+                    process.getInputStream()));
+            //StringBuffer sb = new StringBuffer();
+            String line;
+            while ((line = br.readLine()) != null) {
+            	if(line.contains("Ping: "))
+            	{
+            		String[] TempArray = line.split("Ping: ");
+            		returnvalue[0] = TempArray[1];
+            	}
+            	
+            	if(line.contains("Download: "))
+            	{
+            		String[] TempArray = line.split("Download: ");
+            		returnvalue[1] = TempArray[1];
+            	}
+            	
+            	if(line.contains("Upload: "))
+            	{
+            		String[] TempArray = line.split("Upload: ");
+            		returnvalue[2] = TempArray[1];
+            	}
+            }
+            return returnvalue;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+	
 	
 	public static void PrepareSpeedLimit()
 	{
@@ -869,6 +988,10 @@ public class Main {
 			if(Node_SpeedLimit_Method == 2 && SpeedLimit != 0)
 			{
 				Exec("trickle -d "+(SpeedLimit*1024/8)+" -u "+(SpeedLimit*1024/8)+" ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -d 208.67.222.222",true);
+			}
+			else
+			{
+				Exec("ss-server -c /tmp/ssshell/"+Id+".conf -f /tmp/ssshell/"+Id+".pid -u -d 208.67.222.222",true);
 			}
 		}
 		
