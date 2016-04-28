@@ -5,10 +5,13 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -23,13 +26,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.jnetpcap.Pcap;
 import org.jnetpcap.PcapIf;
 import org.jnetpcap.packet.PcapPacket;  
 import org.jnetpcap.packet.PcapPacketHandler;
 import org.jnetpcap.protocol.network.Ip4;
-import org.jnetpcap.protocol.network.Ip6;
 import org.jnetpcap.protocol.tcpip.Tcp;
 import org.jnetpcap.protocol.tcpip.Udp;  
 
@@ -56,36 +60,38 @@ public class Main {
 	private static String Node_Nic;
 	protected static int Node_SpeedLimit;
 	private static Ip4 ipv4Header = new Ip4();
-	private static Ip6 ipv6Header = new Ip6();
-    private static Tcp tcpHeader = new Tcp();
+	private static Tcp tcpHeader = new Tcp();
     private static Udp udpHeader = new Udp();
 	private static Integer Node_SpeedLimit_Method;
 	private static Integer Speedtest;
-	private static String Speedtest_cmcc;
-	private static String Speedtest_chinanet;
-	private static String Speedtest_chinaunicome;
+	private static Integer CloudSafe;
+	private static Long Lastreadline;
+	private static Properties ConfigProperties;
+	protected static String SIP;
+	protected static String LIP;
+
 
 	public static void main(final String[] args){
 		System.setProperty("user.timezone","GMT +08");
 		
+		ConfigProperties = new Properties();
 		try {
-			FileInputStream input = new FileInputStream("ssshell.conf");
-			Properties properties = new Properties();
+			FileInputStream ConfigInput = new FileInputStream("ssshell.conf");
 			try {
-				properties.load(input);
-				Node_ID = properties.getProperty("nodeid");
-				Node_IP = properties.getProperty("ip");
-				Node_Nic = properties.getProperty("nic");
-				DB_Address = properties.getProperty("db_address");
-				DB_Name = properties.getProperty("db_name");
-				DB_Username = properties.getProperty("db_username");
-				DB_Password = properties.getProperty("db_password");
-				Version = Integer.valueOf(properties.getProperty("version"));
-				Node_SpeedLimit_Method = Integer.valueOf(properties.getProperty("speedlimit"));
-				Speedtest = Integer.valueOf(properties.getProperty("speedtest"));
-				Speedtest_cmcc = properties.getProperty("cmcc");
-				Speedtest_chinanet = properties.getProperty("telecom");
-				Speedtest_chinaunicome = properties.getProperty("unicom");
+				ConfigProperties.load(ConfigInput);
+				Node_ID = ConfigProperties.getProperty("nodeid");
+				Node_IP = ConfigProperties.getProperty("ip");
+				Node_Nic = ConfigProperties.getProperty("nic");
+				DB_Address = ConfigProperties.getProperty("db_address");
+				DB_Name = ConfigProperties.getProperty("db_name");
+				DB_Username = ConfigProperties.getProperty("db_username");
+				DB_Password = ConfigProperties.getProperty("db_password");
+				Version = Integer.valueOf(ConfigProperties.getProperty("version"));
+				Node_SpeedLimit_Method = Integer.valueOf(ConfigProperties.getProperty("speedlimit"));
+				Speedtest = Integer.valueOf(ConfigProperties.getProperty("speedtest"));
+				CloudSafe = Integer.valueOf(ConfigProperties.getProperty("cloudsafe"));
+				Lastreadline = Long.valueOf(ConfigProperties.getProperty("lastreadline"));
+				ConfigInput.close();
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -131,17 +137,14 @@ public class Main {
         int nic = -1;
         
         for (PcapIf device : alldevs) { 
-        	System.out.println(device.getName());
             if(device.getName().equals(Node_Nic))
             {
             	nic = i;
-            	Log("info", "Get the NIC "+device.getName()+" "+i);
             }
             
             if(device.getName().equals("any"))
             {
             	any = i;
-            	Log("info", "Get the NIC "+device.getName()+" "+i);
             }
             i++;
         }  
@@ -266,7 +269,7 @@ public class Main {
 	                    {
 	                    	if(UserPortList.contains(tcp.destination()))
 	                    	{
-	                    		if(packet.size()>80)
+	                    		if(packet.size()>100)
 	                    		{
 		                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getPacketWirelen());
 		                    		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
@@ -295,7 +298,7 @@ public class Main {
 	                    {
 	                    	if(UserPortList.contains(udp.destination()))
 	                    	{
-	                    		if(packet.size()>80)
+	                    		if(packet.size()>100)
 	                    		{
 		                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getPacketWirelen());
 		                    		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
@@ -322,6 +325,62 @@ public class Main {
         	}
         }.start();
         
+        new Thread(){
+        	@Override
+        	public void run()
+        	{
+        		while(CloudSafe == 1 && Version == 3)
+        		{
+        			SIP = getServerIP().getHostAddress();
+        			LIP = getMyIP().getHostAddress();
+        			Connection MysqlConnection = null;
+        			try{
+	    				Class.forName("com.mysql.jdbc.Driver").newInstance();
+	    				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
+	                    
+	    				
+	    				
+	    				HashSet<String>LocalDeny = ReadLocalDeny();
+	    				Iterator<String> LocalDenyIterator = LocalDeny.iterator();
+	    				while(LocalDenyIterator.hasNext())
+	    				{
+	    					String IP = LocalDenyIterator.next();
+	    					Statement AddBlockStatement = MysqlConnection.createStatement();
+	    					AddBlockStatement.execute("INSERT INTO `blockip` (`id`, `nodeid`, `ip`, `datetime`) VALUES (NULL, '"+Node_ID+"', '"+IP+"', unix_timestamp())");
+	    					AddBlockStatement = null;
+	    				}
+	    				
+	    				Statement SelectBlockStatement = MysqlConnection.createStatement();
+                        ResultSet SelectBlockResultSet = SelectBlockStatement.executeQuery("SELECT * FROM `blockip` where `datetime`>unix_timestamp()-60 AND `nodeid`<>"+Node_ID);
+                        while (SelectBlockResultSet.next()) {
+                        	AddBlock(SelectBlockResultSet.getString("ip"));
+                        }
+	    				
+	    				Statement SelectUnBlockStatement = MysqlConnection.createStatement();
+                        ResultSet SelectUnBlockResultSet = SelectUnBlockStatement.executeQuery("SELECT * FROM `unblockip` where `datetime`>unix_timestamp()-60");
+                        while (SelectUnBlockResultSet.next()) {
+                        	DeleteBlock(SelectUnBlockResultSet.getString("ip"));
+                        }
+	    				
+	    				
+	    				
+	    				
+	    				MysqlConnection.close();
+	    				MysqlConnection = null;
+        			}catch(Exception e){
+        				
+        			}
+        			
+        			try {
+						sleep(60000);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+        		}
+        	}
+        }.start();
+		
         new Thread(){
         	@Override
         	public void run()
@@ -381,9 +440,11 @@ public class Main {
 	    				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
 	                    
 	    				Statement AddSpeedtestStatement = MysqlConnection.createStatement();
-	    				AddSpeedtestStatement.execute("INSERT INTO `speedtest` (`id`, `nodeid`, `datetime`, `telecomping`, `telecomeupload`, `telecomedownload`, `unicomping`, `unicomupload`, `unicomdownload`, `cmccping`, `cmccupload`, `cmccdownload`) VALUES (NULL, '"+Node_ID+"', '"+String.valueOf(Long.valueOf(System.currentTimeMillis()/1000))+"', '"+ChinaNetResult[0]+"', '"+ChinaNetResult[1]+"', '"+ChinaNetResult[2]+"', '"+ChinaUnicomResult[0]+"', '"+ChinaUnicomResult[1]+"', '"+ChinaUnicomResult[2]+"', '"+CmccResult[0]+"', '"+CmccResult[1]+"', '"+CmccResult[2]+"')");
+	    				AddSpeedtestStatement.execute("INSERT INTO `speedtest` (`id`, `nodeid`, `datetime`, `telecomping`, `telecomeupload`, `telecomedownload`, `unicomping`, `unicomupload`, `unicomdownload`, `cmccping`, `cmccupload`, `cmccdownload`) VALUES (NULL, '"+Node_ID+"', unix_timestamp(), '"+ChinaNetResult[0]+"', '"+ChinaNetResult[1]+"', '"+ChinaNetResult[2]+"', '"+ChinaUnicomResult[0]+"', '"+ChinaUnicomResult[1]+"', '"+ChinaUnicomResult[2]+"', '"+CmccResult[0]+"', '"+CmccResult[1]+"', '"+CmccResult[2]+"')");
 	    				AddSpeedtestStatement = null;
+	    				
 	    				MysqlConnection.close();
+	    				MysqlConnection = null;
         			}catch(Exception e){
         				
         			}
@@ -397,8 +458,8 @@ public class Main {
         		}
         	}
         }.start();
-		
-		
+        
+        
 		
 		
 		new Thread(){
@@ -456,7 +517,7 @@ public class Main {
                         ResultSet SelectUserInfoResultSet = null;
                         if(Version==3)
                         {
-                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>'"+TimeStamp2Date(String.valueOf(Long.valueOf((long) (System.currentTimeMillis()/1000))), "yyyy-MM-dd HH:mm:ss")+"' AND `transfer_enable`>`u`+`d`");
+                        	SelectUserInfoResultSet = SelectUserInfoStatement.executeQuery("SELECT * FROM user WHERE `class`>="+Node_Class+" AND `enable`=1 AND `expire_in`>now() AND `transfer_enable`>`u`+`d`");
                         }
                         else
                         {
@@ -543,25 +604,28 @@ public class Main {
                         {
 	                        HashSet<Integer> firstTimeMeetUser = new HashSet<Integer>();
 	                        Statement GetAliveIpStatement = MysqlConnection.createStatement();
-	                        ResultSet GetAliveIpSet = GetAliveIpStatement.executeQuery("SELECT * FROM `alive_ip` where `datetime`>'"+Long.valueOf(System.currentTimeMillis()/1000-90)+"'");
+	                        ResultSet GetAliveIpSet = GetAliveIpStatement.executeQuery("SELECT * FROM `alive_ip` where `datetime`>unix_timestamp()-90");
 	                        while (GetAliveIpSet.next()) {
 	                        	if(UserLimitCount.containsKey(GetAliveIpSet.getInt("userid")))
 	                        	{
-	                        		if(!firstTimeMeetUser.contains(GetAliveIpSet.getInt("userid")))
+	                        		if(UserLimitCount.get(GetAliveIpSet.getInt("userid"))!=0)
 	                        		{
-	                        			HashSet<String> TempIpHashSet = new HashSet<String>();
-	                        			
-	                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
-	                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
-	                        			
-	                        			firstTimeMeetUser.add(GetAliveIpSet.getInt("userid"));
-	                        		}
-	                        		else
-	                        		{
-	                        			HashSet<String> TempIpHashSet = UserCurrentIP.get(GetAliveIpSet.getInt("userid"));
-	                        		
-	                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
-	                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
+		                        		if(!firstTimeMeetUser.contains(GetAliveIpSet.getInt("userid")))
+		                        		{
+		                        			HashSet<String> TempIpHashSet = new HashSet<String>();
+		                        			
+		                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
+		                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
+		                        			
+		                        			firstTimeMeetUser.add(GetAliveIpSet.getInt("userid"));
+		                        		}
+		                        		else
+		                        		{
+		                        			HashSet<String> TempIpHashSet = UserCurrentIP.get(GetAliveIpSet.getInt("userid"));
+		                        		
+		                        			TempIpHashSet.add(GetAliveIpSet.getString("ip"));
+		                        			UserCurrentIP.put(GetAliveIpSet.getInt("userid"), TempIpHashSet);
+		                        		}
 	                        		}
 	                        	}
 	                        }
@@ -628,13 +692,13 @@ public class Main {
                     						Log("info","Syncing the user traffic...."+CurrentUserId+" "+((ThisTimeBandWidth)*Node_Rate));
                     						
                     						Statement UpdateUserStatement = MysqlConnection.createStatement();
-                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+((ThisTimeBandWidth)*Node_Rate)+",`t`='"+(System.currentTimeMillis()/1000)+"' WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
+                    						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+((ThisTimeBandWidth)*Node_Rate)+",`t`=unix_timestamp() WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
                     						UpdateUserStatement = null;
                     						
                     						if(Version == 2||Version == 3)
                     						{
 	                    						Statement AddTrafficLogStatement = MysqlConnection.createStatement();
-	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((long)(ThisTimeBandWidth*Node_Rate))+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
+	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((long)(ThisTimeBandWidth*Node_Rate))+"', unix_timestamp()); ");
 	                    						AddTrafficLogStatement = null;
                     						}
                     						
@@ -687,21 +751,21 @@ public class Main {
                         if(Version == 3)
                         {
 	                        Statement UpdateNodeStatement = MysqlConnection.createStatement();
-	                        UpdateNodeStatement.executeUpdate("UPDATE `ss_node` SET `node_heartbeat`='"+Long.valueOf(System.currentTimeMillis()/1000)+"',`node_bandwidth`=`node_bandwidth`+'"+(ThisTimeSumBandwidth)+"' WHERE `id` = "+Node_ID+"; ");
+	                        UpdateNodeStatement.executeUpdate("UPDATE `ss_node` SET `node_heartbeat`=unix_timestamp(),`node_bandwidth`=`node_bandwidth`+'"+(ThisTimeSumBandwidth)+"' WHERE `id` = "+Node_ID+"; ");
 							UpdateNodeStatement = null;
                         }
                         
 						if(Version == 2 || Version == 3)
 						{
 	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
-	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_online_log` (`id`, `Node_ID`, `online_user`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+OnlineUserCount+"', '"+Long.valueOf(System.currentTimeMillis()/1000)+"'); ");
+	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_online_log` (`id`, `Node_ID`, `online_user`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+OnlineUserCount+"', unix_timestamp()); ");
 	                        AddNodeOnlineLogStatement = null;
 						}
 						
 						if(Version == 2 || Version == 3)
 						{
 	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
-	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+GetUptime()+"', '"+GetLoad()+"', '"+String.valueOf(Long.valueOf(System.currentTimeMillis()/1000))+"'); ");
+	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+GetUptime()+"', '"+GetLoad()+"', unix_timestamp()); ");
 	                        AddNodeOnlineLogStatement = null;
 	                    }
                         
@@ -727,6 +791,7 @@ public class Main {
         			}
         			
         			Log("info","Sleeping...");
+        			System.gc();
         			try {
 						sleep(60000);
 					} catch (InterruptedException e) {
@@ -751,6 +816,147 @@ public class Main {
         	}
         }.start();
 	}
+	
+	
+	public static HashSet<String> ReadLocalDeny()
+	{
+		HashSet<String> Temp = new HashSet<String>();
+		
+		BufferedReader reader;
+		try {
+			reader = new BufferedReader(new InputStreamReader(
+			        new FileInputStream("/etc/hosts.deny")));
+			String line = reader.readLine();
+	        Long num = (long) 0;
+	        while (line != null) {
+	            if (Lastreadline < ++num) {
+	                if(!line.startsWith("#"))
+	                {
+	                	String TIP = getIPAddress(line);
+	                	if(TIP != null)
+	                	{
+	                		if(!TIP.equals(SIP) && !TIP.equals(LIP))
+	                		{
+	                			Temp.add(TIP);
+	                		}
+	                		else
+	                		{
+	                			DeleteBlock(TIP);
+	                		}
+	                	}
+	                }
+	            }
+	            line = reader.readLine();
+	        }
+	        reader.close();
+	        Lastreadline = num;
+	        SaveLine(Lastreadline);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return Temp;
+	}
+	
+	public static InetAddress getMyIP() {
+        InetAddress myIPaddress;
+		try {
+            myIPaddress = InetAddress.getLocalHost();
+            return (myIPaddress);
+        } catch (UnknownHostException e) {
+        	return null;
+        }    
+    }
+ 
+    public static InetAddress getServerIP() {
+        InetAddress myServer;
+		try {
+            myServer = InetAddress.getByName(DB_Address);
+            return (myServer);
+        } catch (UnknownHostException e) {
+        	return null;
+        }
+        
+    }
+	
+	public static void SaveLine(Long Lastreadline)
+	{
+		FileOutputStream ConfigOutput = null;
+		try {
+			ConfigOutput = new FileOutputStream("ssshell.conf");
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		ConfigProperties.setProperty("lastreadline", String.valueOf(Lastreadline));
+		try {
+			Properties TempP = ConfigProperties;
+			ConfigProperties.store(ConfigOutput, "glzjin");
+			ConfigProperties = TempP;
+			ConfigOutput.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void AddBlock(String ip)
+	{
+		String IP = getIPAddress(ip);
+		if(IP != null)
+		{
+			if(!IP.equals(SIP) && !IP.equals(LIP))
+    		{
+				Exec("route add -host "+IP+" gw 127.0.0.1",true);
+				Exec("iptables -I INPUT -s "+IP+" -j DROP",true);
+				Exec("echo -e \"ALL: "+IP+"\" >> /etc/hosts.deny",true);
+				Lastreadline ++;
+				SaveLine(Lastreadline);
+    		}
+		}
+	}
+	
+	
+	public static void DeleteBlock(String ip)
+	{
+		String IP = getIPAddress(ip);
+		if(IP != null)
+		{
+			Exec("route del "+IP,true);
+			Exec("iptables -D INPUT -s "+IP+" -j DROP",true);
+			Exec("sed -i \"s/ALL: "+IP+"/##Removed/g\" `grep "+IP+" -rl /etc/hosts.deny`",true);
+		}
+	}
+	
+	
+	public static String getIPAddress(String text) {
+		String IPADDRESS_PATTERN = 
+		        "(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)";
+		
+		Pattern pattern = Pattern.compile(IPADDRESS_PATTERN);
+		Matcher matcher = pattern.matcher(text);
+		        if (matcher.find()) {
+		            return matcher.group();
+		        }
+		        else{
+		            return null;
+		        }
+	}
+	
+	public static int getTotalLines(String fileName) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(
+                new FileInputStream(fileName)));
+        LineNumberReader reader = new LineNumberReader(in);
+        String s = reader.readLine();
+        int lines = 0;
+        while (s != null) {
+            lines++;
+            s = reader.readLine();
+        }
+        reader.close();
+        in.close();
+        return lines;
+    }
 
 	
 	public static String Exec(String cmd,Boolean NeedReturn) {
@@ -940,8 +1146,13 @@ public class Main {
     		PortBandWidthHashMap.remove(UsersInfoHashMap.get(UserId).getPort());
     		PortUserIdHashMap.remove(UsersInfoHashMap.get(UserId).getPort());
     		
+    		if(UserLimitCount.get(UserId)!=0)
+    		{
+    			UserCurrentIP.remove(UserId);
+    		}
+    		
     		UserLimitCount.remove(UserId);
-    		UserCurrentIP.remove(UserId);
+    		
     		
     		if(UsersInfoHashMap.get(UserId).getSpeedLimit() != 0 && Node_SpeedLimit_Method == 1)
     		{
@@ -998,8 +1209,10 @@ public class Main {
 		UserPortList.add(Port);
 		
 		UserLimitCount.put(Id, LimitCount);
-		UserCurrentIP.put(Id, new HashSet<String>());
-		
+		if(LimitCount != 0)
+		{
+			UserCurrentIP.put(Id, new HashSet<String>());
+		}
 		
 		
 		PortUserIdHashMap.put(Port, Id);
@@ -1025,11 +1238,4 @@ public class Main {
 
         return ipAddress;
     }
-	
-	
-	public static String TimeStamp2Date(String timestampString, String formats){ 
-	  Long timestamp = Long.parseLong(timestampString)*1000; 
-	  String date = new java.text.SimpleDateFormat(formats).format(new java.util.Date(timestamp)); 
-	  return date; 
-	}
 }
