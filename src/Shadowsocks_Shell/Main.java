@@ -13,7 +13,6 @@ import java.io.LineNumberReader;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -69,6 +68,9 @@ public class Main {
 	private static Properties ConfigProperties;
 	protected static String SIP;
 	protected static String LIP;
+	private static DBPool ConnectionPool;
+	
+	
 
 
 	public static void main(final String[] args){
@@ -101,6 +103,8 @@ public class Main {
 			e2.printStackTrace();
 		}
 		
+		ConnectionPool = new DBPool(DB_Name, DB_Username, DB_Password, DB_Address);
+	
 		Exec("killall ss-server",false);
 		Exec("rm -rf /tmp/ssshell/*.pid",false);
 		
@@ -269,7 +273,7 @@ public class Main {
 	                    {
 	                    	if(UserPortList.contains(tcp.destination()))
 	                    	{
-	                    		if(packet.size()>100)
+	                    		if(packet.size()>100 && AliveIpPortHashMap.containsKey(getIpAddress(ip.source())+"-"+tcp.destination()))
 	                    		{
 		                    		PortBandWidthHashMap.put(tcp.destination(),PortBandWidthHashMap.get(tcp.destination())+packet.getPacketWirelen());
 		                    		PortOnlineHashMap.put(tcp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
@@ -287,10 +291,25 @@ public class Main {
 	                    {
 	                    	if(UserPortList.contains(udp.source()))
 	                    	{
-	                    		if(packet.size()>100)
+	                    		if(packet.size()>100 && AliveIpPortHashMap.containsKey(getIpAddress(ip.destination())+"-"+udp.source()))
 	                    		{
 		                    		PortBandWidthHashMap.put(udp.source(),PortBandWidthHashMap.get(udp.source())+packet.getPacketWirelen());
 		                    		PortOnlineHashMap.put(udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+		                    		{	                    			
+		                    			if(UserLimitCount.get(PortUserIdHashMap.get(udp.source()))!=0)
+		                    			{
+		                    				if(UserLimitCount.get(PortUserIdHashMap.get(udp.source()))<UserCurrentIP.get(PortUserIdHashMap.get(udp.source())).size())
+		                    				{
+		                    					if(!UserCurrentIP.get(PortUserIdHashMap.get(udp.source())).contains(getIpAddress(ip.destination())))
+		            							{	
+		                    						AddTempBlock(getIpAddress(ip.destination()),udp.source());
+		                    						return;
+		            							}
+		                    				}
+		                    			}
+		                    			
+		                    			AliveIpPortHashMap.put(getIpAddress(ip.destination())+"-"+udp.source(), Long.valueOf(System.currentTimeMillis()/1000));
+		                            }
 	                    		}
 	                    	}
 	                    }
@@ -298,7 +317,7 @@ public class Main {
 	                    {
 	                    	if(UserPortList.contains(udp.destination()))
 	                    	{
-	                    		if(packet.size()>100)
+	                    		if(packet.size()>100 && AliveIpPortHashMap.containsKey(getIpAddress(ip.destination())+"-"+udp.source()))
 	                    		{
 		                    		PortBandWidthHashMap.put(udp.destination(),PortBandWidthHashMap.get(udp.destination())+packet.getPacketWirelen());
 		                    		PortOnlineHashMap.put(udp.destination(), Long.valueOf(System.currentTimeMillis()/1000));
@@ -315,12 +334,13 @@ public class Main {
         
         
         new Thread(){
-        	@Override
+        	@SuppressWarnings("deprecation")
+			@Override
         	public void run()
         	{
-        		while(true)
+        		//while(true)
                 {
-                	pcap.loop(1000, jpacketHandler, "jNetPcap rocks!");  
+                	pcap.loop(Pcap.LOOP_INFINATE, jpacketHandler, "jNetPcap rocks!");  
                 }
         	}
         }.start();
@@ -335,8 +355,7 @@ public class Main {
         			LIP = getMyIP().getHostAddress();
         			Connection MysqlConnection = null;
         			try{
-	    				Class.forName("com.mysql.jdbc.Driver").newInstance();
-	    				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
+	    				MysqlConnection = ConnectionPool.getConnection();
 	                    
 	    				
 	    				
@@ -347,6 +366,7 @@ public class Main {
 	    					String IP = LocalDenyIterator.next();
 	    					Statement AddBlockStatement = MysqlConnection.createStatement();
 	    					AddBlockStatement.execute("INSERT INTO `blockip` (`id`, `nodeid`, `ip`, `datetime`) VALUES (NULL, '"+Node_ID+"', '"+IP+"', unix_timestamp())");
+	    					AddBlockStatement.close();
 	    					AddBlockStatement = null;
 	    				}
 	    				
@@ -355,6 +375,8 @@ public class Main {
                         while (SelectBlockResultSet.next()) {
                         	AddBlock(SelectBlockResultSet.getString("ip"));
                         }
+                        SelectBlockResultSet.close();
+                        SelectBlockStatement.close();
 	    				
 	    				Statement SelectUnBlockStatement = MysqlConnection.createStatement();
                         ResultSet SelectUnBlockResultSet = SelectUnBlockStatement.executeQuery("SELECT * FROM `unblockip` where `datetime`>unix_timestamp()-60");
@@ -362,7 +384,8 @@ public class Main {
                         	DeleteBlock(SelectUnBlockResultSet.getString("ip"));
                         }
 	    				
-	    				
+                        SelectUnBlockResultSet.close();
+                        SelectUnBlockStatement.close();
 	    				
 	    				
 	    				MysqlConnection.close();
@@ -436,11 +459,11 @@ public class Main {
         			
         			Connection MysqlConnection = null;
         			try{
-	    				Class.forName("com.mysql.jdbc.Driver").newInstance();
-	    				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
+	    				MysqlConnection = ConnectionPool.getConnection();
 	                    
 	    				Statement AddSpeedtestStatement = MysqlConnection.createStatement();
 	    				AddSpeedtestStatement.execute("INSERT INTO `speedtest` (`id`, `nodeid`, `datetime`, `telecomping`, `telecomeupload`, `telecomedownload`, `unicomping`, `unicomupload`, `unicomdownload`, `cmccping`, `cmccupload`, `cmccdownload`) VALUES (NULL, '"+Node_ID+"', unix_timestamp(), '"+ChinaNetResult[0]+"', '"+ChinaNetResult[1]+"', '"+ChinaNetResult[2]+"', '"+ChinaUnicomResult[0]+"', '"+ChinaUnicomResult[1]+"', '"+ChinaUnicomResult[2]+"', '"+CmccResult[0]+"', '"+CmccResult[1]+"', '"+CmccResult[2]+"')");
+	    				AddSpeedtestStatement.close();
 	    				AddSpeedtestStatement = null;
 	    				
 	    				MysqlConnection.close();
@@ -471,8 +494,7 @@ public class Main {
         			try {
         				Log("info","Connecting to mysql....");
         				Connection MysqlConnection = null;
-        				Class.forName("com.mysql.jdbc.Driver").newInstance();
-        				MysqlConnection = DriverManager.getConnection("jdbc:mysql://"+DB_Address+"/"+DB_Name+"",DB_Username,DB_Password);
+        				MysqlConnection = ConnectionPool.getConnection();
                         
                         Statement SelectNodeinfoStatement = MysqlConnection.createStatement();
                         
@@ -509,6 +531,8 @@ public class Main {
                         	Node_Enable = true;
                         }
                         
+                        SelectNodeResultSet.close();
+                        SelectNodeinfoStatement.close();
                         SelectNodeinfoStatement = null;
                         SelectNodeResultSet = null;
                         
@@ -597,6 +621,8 @@ public class Main {
                             }
                         }
                         
+                        SelectUserInfoResultSet.close();
+                        SelectUserInfoStatement.close();
                         SelectUserInfoStatement = null;
                         SelectUserInfoResultSet = null;
                         
@@ -630,6 +656,8 @@ public class Main {
 	                        	}
 	                        }
 	                        
+	                        GetAliveIpSet.close();
+	                        GetAliveIpStatement.close();
 	                        GetAliveIpStatement = null;
 	                        GetAliveIpSet = null;
 	                        firstTimeMeetUser = null;
@@ -693,12 +721,14 @@ public class Main {
                     						
                     						Statement UpdateUserStatement = MysqlConnection.createStatement();
                     						UpdateUserStatement.executeUpdate("UPDATE `user` SET `d`=`d`+"+((ThisTimeBandWidth)*Node_Rate)+",`t`=unix_timestamp() WHERE `id`='"+UsersInfoHashMap.get(CurrentUserId).getId()+"'");
+                    						UpdateUserStatement.close();
                     						UpdateUserStatement = null;
                     						
                     						if(Version == 2||Version == 3)
                     						{
 	                    						Statement AddTrafficLogStatement = MysqlConnection.createStatement();
 	                    						AddTrafficLogStatement.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '"+CurrentUserId+"', '0', '"+(ThisTimeBandWidth)+"', '"+Node_ID+"', '"+Node_Rate+"', '"+TrafficShow((long)(ThisTimeBandWidth*Node_Rate))+"', unix_timestamp()); ");
+	                    						AddTrafficLogStatement.close();
 	                    						AddTrafficLogStatement = null;
                     						}
                     						
@@ -729,6 +759,7 @@ public class Main {
 		                        	String Port = IpPortArray[1];
 		                        	Statement AliveIpStatement = MysqlConnection.createStatement();
 		                        	AliveIpStatement.execute("INSERT INTO `alive_ip` (`id`, `nodeid`,`userid`, `ip`, `datetime`) VALUES (NULL, '"+Node_ID+"','"+PortUserIdHashMap.get(Integer.valueOf(Port))+"', '"+IP+"', '"+AliveIpPortHashMap.get(IpPort)+"')");
+		                        	AliveIpStatement.close();
 		                        	AliveIpStatement = null;
 	                        	}
 	                        	else
@@ -752,13 +783,15 @@ public class Main {
                         {
 	                        Statement UpdateNodeStatement = MysqlConnection.createStatement();
 	                        UpdateNodeStatement.executeUpdate("UPDATE `ss_node` SET `node_heartbeat`=unix_timestamp(),`node_bandwidth`=`node_bandwidth`+'"+(ThisTimeSumBandwidth)+"' WHERE `id` = "+Node_ID+"; ");
-							UpdateNodeStatement = null;
+	                        UpdateNodeStatement.close();
+	                        UpdateNodeStatement = null;
                         }
                         
 						if(Version == 2 || Version == 3)
 						{
 	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
 	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_online_log` (`id`, `Node_ID`, `online_user`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+OnlineUserCount+"', unix_timestamp()); ");
+	                        AddNodeOnlineLogStatement.close();
 	                        AddNodeOnlineLogStatement = null;
 						}
 						
@@ -766,6 +799,7 @@ public class Main {
 						{
 	                        Statement AddNodeOnlineLogStatement = MysqlConnection.createStatement();
 	                        AddNodeOnlineLogStatement.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '"+Node_ID+"', '"+GetUptime()+"', '"+GetLoad()+"', unix_timestamp()); ");
+	                        AddNodeOnlineLogStatement.close();
 	                        AddNodeOnlineLogStatement = null;
 	                    }
                         
@@ -802,19 +836,6 @@ public class Main {
         	}
         }.start();
         
-        new Thread(){
-        	@Override
-        	public void run(){
-        		Exec("yes | cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime",true);
-        		Exec("ntpdate pool.ntp.org",true);
-        		try {
-					sleep(86400000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-        	}
-        }.start();
 	}
 	
 	

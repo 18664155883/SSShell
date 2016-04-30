@@ -4,5 +4,8 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/jnetpcap.jar"/>
 	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/mysql-connector-java-5.1.34.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/c3p0-0.9.5.2.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/c3p0-oracle-thin-extras-0.9.5.2.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/mchange-commons-java-0.2.11.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
