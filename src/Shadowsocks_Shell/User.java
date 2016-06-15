@@ -9,6 +9,8 @@ public class User {
 	private int SpeedLimit;
 	private int LimitCount;
 	
+
+	
 	public User(int Port,String Passwd,int id,String method,int SpeedLimit,int LimitCount){
 		this.Port = Port;
 		this.Passwd = Passwd;

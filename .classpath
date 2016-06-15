@@ -7,5 +7,7 @@
 	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/c3p0-0.9.5.2.jar"/>
 	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/c3p0-oracle-thin-extras-0.9.5.2.jar"/>
 	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/mchange-commons-java-0.2.11.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/bcpg-jdk15on-154.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Administrator/workspace/Shadowsocks-Shell/lib/bcprov-jdk15on-154.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
